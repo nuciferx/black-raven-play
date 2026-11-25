@@ -458,8 +458,8 @@ const BIOMES = {
     strata: ['#c9d7e6', '#9db6cf', '#7d92ac', '#5f7088', '#4a5870', '#3b4659'],
     terrain: { amp: 3.6, freq: 0.03, ridged: false },
     bodies: [
-      { kind: 'villager', anchor: 'camp', dist: [3.5, 5], tint: { shirt: '#2e63b8', pants: '#3a3f55', skin: '#f6e2d0' } },
-      { kind: 'villager', anchor: 'any',  dist: [0.25, 0.6], tint: { shirt: '#c8453d', pants: '#2f3446', skin: '#e8c3a2' } },
+      { kind: 'furfolk', anchor: 'camp', dist: [3.5, 5], tint: { coat: '#5a4a3a' } },   // ชาวบ้านใส่ขนสัตว์ (rig furfolk · 54-folk-rig.js)
+      { kind: 'furfolk', anchor: 'any',  dist: [0.25, 0.6], tint: { coat: '#7a6a58' } },
       { kind: 'rock', anchor: 'hill', hill: 0, tint: { rock: '#b4c0cc' } },
       { kind: 'rock', anchor: 'hill', hill: 1, tint: { rock: '#a6b4c4' } },
       { kind: 'rock', anchor: 'any',  dist: [0.2, 0.6], tint: { rock: '#bcc8d4' } },
@@ -506,8 +506,8 @@ const BIOMES = {
     strata: ['#c98d4e', '#b57842', '#9d6038', '#84492f', '#693a28', '#523022'],
     terrain: { amp: 4.6, freq: 0.026, ridged: true },
     bodies: [
-      { kind: 'villager', anchor: 'camp', dist: [3.5, 5], tint: { shirt: '#efe6d0', pants: '#a0703c', skin: '#c99468' } },
-      { kind: 'villager', anchor: 'any',  dist: [0.25, 0.6], tint: { shirt: '#3f8f86', pants: '#e8e0c8', skin: '#b98258' } },
+      { kind: 'robefolk', anchor: 'camp', dist: [3.5, 5], tint: { robe: '#d9c9a0' } },   // ชาวบ้านใส่เสื้อคลุมยาว (rig robefolk)
+      { kind: 'robefolk', anchor: 'any',  dist: [0.25, 0.6], tint: { robe: '#3a5a8a' } },
       { kind: 'rock', anchor: 'hill', hill: 0, tint: { rock: '#e0b684' } },
       { kind: 'rock', anchor: 'hill', hill: 1, tint: { rock: '#d4a874' } },
       { kind: 'rock', anchor: 'any',  dist: [0.2, 0.6], tint: { rock: '#dcb27c' } },
@@ -519,6 +519,12 @@ const BIOMES = {
     ],
   },
 };
+
+// หินลอยกลางทางระหว่างเกาะ (38-skyrocks.js): โทนภาพ/ลมฟ้าใช้ของเกาะปลายทาง · ผิวเป็นหิน ไม่มีของประดับ/ร่าง
+BIOMES.rockSnow = Object.assign({}, BIOMES.snow, { name: 'หินลอย (ทางไปเกาะหิมะ)', ground: { colors: ['#c4cad4', '#d6dee8'], edge: '#eef3f8', steep: '#7a8294' },
+  strata: ['#a9b0bc', '#8a93a3', '#6f7888', '#5a6272', '#474e5c', '#3a404c'], terrain: { amp: 0.5, freq: 0.12, ridged: false }, bodies: [], props: [] });
+BIOMES.rockDesert = Object.assign({}, BIOMES.desert, { name: 'หินลอย (ทางไปเกาะทะเลทราย)', ground: { colors: ['#d8bc8a', '#cdaa74'], edge: '#ecd6a8', steep: '#9a6e44' },
+  strata: ['#b98a58', '#a47a4c', '#8a6240', '#734f34', '#5c3f2c', '#4a3224'], terrain: { amp: 0.5, freq: 0.12, ridged: false }, bodies: [], props: [] });
 
 /* ---- 30-world.js ---- */
 // 30-world.js — ตำแหน่งเกาะ, ขอบเขต, ความสูงพื้น (groundAt) · สุ่มแบบ seed ทั้งหมด
@@ -562,6 +568,10 @@ WORLD.build = (seed) => {
       // จุดตั้งแคมป์ (กองไฟ/ตะเกียง) ฝั่งตรงข้ามเนินหลัก · ใช้ rng แยก เลย์เอาต์เดิมไม่ขยับ
       const cr = U.rng(seed * 31 + 7 + i), hl = isl.hills[0], ca = Math.atan2(hl.z - z, hl.x - x) + Math.PI + (cr() - 0.5) * 0.7, cd = isl.radius * (0.3 + cr() * 0.1);
       isl.flats.push({ x: x + Math.cos(ca) * cd, z: z + Math.sin(ca) * cd, r: 2.8, blend: 3.5, h: 0.2, kind: 'camp', fx: d.id === 'snow' ? 'fire' : 'lamp' });
+      // ลานหมู่บ้าน (M5.6 งานย่อย 2): ตั้งฉากกับทิศแคมป์ · ใช้ cr ตัวเดิม ไม่แตะลำดับสุ่มของ rng หลัก · 37-snowvillage.js / 37-desertvillage.js สร้างบ้านบนลานนี้
+      const va = ca + (d.id === 'snow' ? 1 : -1) * Math.PI / 2, vd = isl.radius * 0.22;
+      isl.village = { x: x + Math.cos(va) * vd, z: z + Math.sin(va) * vd };
+      isl.flats.push({ x: isl.village.x, z: isl.village.z, r: d.id === 'snow' ? 13 : 16, blend: 5, h: 0.25, kind: 'village' });
     }
     // เนินเล็กเพิ่มอีกลูก
     const a2 = rng() * Math.PI * 2, r2 = isl.radius * (d.id === 'home' ? 0.62 : 0.35 + rng() * 0.25);
@@ -572,6 +582,7 @@ WORLD.build = (seed) => {
   for (const s of WORLD.islands) {
     b.minX = Math.min(b.minX, s.x); b.maxX = Math.max(b.maxX, s.x); b.minZ = Math.min(b.minZ, s.z); b.maxZ = Math.max(b.maxZ, s.z);
   }
+  SKY.addRocks();   // หินลอยกลางทาง (38-skyrocks.js) — เพิ่มหลังเกาะหลัก 3 เกาะ ไม่แตะลำดับสุ่มของเกาะเดิม · ไม่นับใน bounds
 };
 
 // รัศมีของเกาะที่ทิศ theta (เรียบต่อเนื่องรอบวง)
@@ -721,11 +732,12 @@ TERRAIN.build = (isl) => {
   }
   // หินย้อยเพิ่ม
   const rng = U.rng(seed * 31 + 7);
-  for (let s = 0; s < 8; s++) {
+  const ks = isl.rock ? 0.3 : 1;   // หินลอย: หินย้อยเล็กลงตามขนาดเกาะ
+  for (let s = 0; s < (isl.rock ? 4 : 8); s++) {
     const th = rng() * Math.PI * 2, u = 0.45 + rng() * 0.3, p = ring(th, u);
     const inx = cx + (p[0] - cx) * 0.86, inz = cz + (p[2] - cz) * 0.86;
-    const len = 7 + rng() * 9;
-    gb.limb([inx, p[1] + 1.5, inz], [inx + (rng() - 0.5) * 1.5, p[1] - len, inz + (rng() - 0.5) * 1.5], 1.5 + rng() * 1.4, 0, 5, GFX.mul(strata[3 + (s % 3)], 0.85));
+    const len = (7 + rng() * 9) * ks;
+    gb.limb([inx, p[1] + 1.5, inz], [inx + (rng() - 0.5) * 1.5, p[1] - len, inz + (rng() - 0.5) * 1.5], (1.5 + rng() * 1.4) * ks, 0, 5, GFX.mul(strata[3 + (s % 3)], 0.85));
   }
 
   const mesh = new THREE.Mesh(gb.build(), GFX.mat);
@@ -841,6 +853,7 @@ PROPS.build = (scene) => {
   const lists = {}, cell = 2.5;
   PROPS.count = 0;
   for (const isl of WORLD.islands) {
+    if (isl.rock) continue;   // หินลอยกลางทาง: ไม่มีของประดับ
     const B = BIOMES[isl.biome], occ = new Map(), area = (isl.radius / 42) * (isl.radius / 42);
     const free = (x, z, gap) => {
       const cx = Math.floor(x / cell), cz = Math.floor(z / cell), rr = Math.ceil((gap + 3.5) / cell);
@@ -1070,7 +1083,7 @@ HOUSE.build = (plan, scene) => {
 
   // ---- ช่องเปิด ----
   const defs = [];
-  (plan.doors || []).forEach((d, i) => defs.push({ kind: 'door', id: 'd' + i, wall: d.wall, u0: d.at - d.w / 2, u1: d.at + d.w / 2, v0: 0, v1: d.h || 2.1, locked: !!d.locked, open: !!d.open }));
+  (plan.doors || []).forEach((d, i) => defs.push({ kind: 'door', id: 'd' + i, wall: d.wall, u0: d.at - d.w / 2, u1: d.at + d.w / 2, v0: 0, v1: d.h || 2.1, locked: !!d.locked, open: !!d.open, lockMsg: d.lockMsg }));
   (plan.windows || []).forEach((d, i) => defs.push({ kind: 'window', id: 'w' + i, wall: d.wall, u0: d.at - d.w / 2, u1: d.at + d.w / 2, v0: d.sill || 1.0, v1: (d.sill || 1.0) + (d.h || 1.2), open: !!d.open }));
   (plan.vents || []).forEach((d, i) => defs.push({ kind: 'vent', id: 'v' + i, wall: d.wall, u0: d.at - d.w / 2, u1: d.at + d.w / 2, v0: d.v0 || 2.0, v1: d.v1 || 3.0, open: true }));
   (plan.bars || []).forEach((d, i) => defs.push({ kind: 'bars', id: 'b' + i, wall: d.wall, u0: d.at - d.w / 2, u1: d.at + d.w / 2, v0: d.sill || 1.2, v1: (d.sill || 1.2) + (d.h || 1.4), open: false }));   // ลูกกรง: มองทะลุได้ ผ่านไม่ได้
@@ -1208,7 +1221,7 @@ HOUSE.build = (plan, scene) => {
       INTERACT.add({ id: h.id + '.' + o.id + '.in', x: ix, y: base + FY + 0.3, z: iz, r: 1.1, dy: 1.5, tags: ['hands'], house: h.id, inHouse: h.id,
         text: () => (o.open ? 'ปิดประตู' : 'เปิดประตู'), run: () => HOUSE.toggle(h, o) });
       INTERACT.add({ id: h.id + '.' + o.id + '.locked', x: ox, y: base + 0.3, z: oz, r: 1.1, dy: 1.5, tags: ['hands'], house: h.id, can: () => o.locked && !o.open, hint: true,
-        text: () => 'ประตูล็อก', run: () => UI.toast('ประตูล็อกอยู่ — ต้องหาทางอื่นเข้า', 2600) });
+        text: () => 'ประตูล็อก', run: () => UI.toast(o.lockMsg || 'ประตูล็อกอยู่ — ต้องหาทางอื่นเข้า', 3200) });
     }
   }
   // รอยเท้าบ้านสำหรับการวางของ/AI เดินเตร่ (ไม่ดันตัวที่เดินจริง)
@@ -1632,6 +1645,91 @@ BAKERY.drawGlow = (t) => {
   for (let i = 0; i < 4; i++) { const age = (t * 0.5 + i / 4) % 1; GLOW.add(ox + Math.sin(i * 5.1 + t * 1.3) * 0.5, oy + age * 1.1, oz + Math.cos(i * 3.7 + t) * 0.15, 0.1 * (1 - age * 0.5), 6, (1 - age) * 0.8); }
 };
 
+/* ---- 37-desertvillage.js ---- */
+// 37-desertvillage.js — หมู่บ้านเกาะทะเลทราย (M5.6 งานย่อย 2) · บ้านอิฐดินหลังคาแบน 3 หลัง + หอรับลม + ลานกลางบ้าน (กำแพงเตี้ยล้อม บ่อน้ำ) + ตลาดมีผ้าใบบังแดด 3 แผง
+// ตั้งบนลานราบ isl.village (30-world.js) · พิกัดในไฟล์นี้ "เทียบกลางลานหมู่บ้าน" (lx,lz) · +x ตะวันออก +z ใต้/ใกล้กล้อง · ของประกอบฉากรวมเป็น mesh เดียว (1 draw call)
+// ตลาด: แผงเรียงแนว lz=-3 (3 แผง x=-7.5/0/7.5) · แผงกลาง = พ่อค้าเครื่องเทศ ยืนหลังเคาน์เตอร์ · ผนังหลังแผงเป็นผ้าใบทึบสูง (บังสายตายาม) · ช่องระหว่างแผงเป็นตรอกเข้าหลังแผง
+// เขตหวง (SENSE.zones): หลังเคาน์เตอร์ + ตรอกหลังแผง (lz -8.3..-0.4 รวมหน้าเคาน์เตอร์) · ใครเข้าไป = น่าสงสัยเท่าเข้าบ้านคนอื่น ยามที่เห็นเติมความสงสัยจนไล่ · ถูกจับ = พาออกนอกตลาด (DESV.gate) ไม่เสียของ
+// ยามตลาด 2 คน: G1 ลาดตระเวนทางหน้าแผง (lz=+3.2) · G2 ลาดตระเวนตรอกหลังแผงฝั่งตะวันออก · ทางลอบ: เข้าตรอกหลังแผงจากปลายตะวันตก (ถูกแผงบังจากยามหน้าแผง) หรือใช้กิ้งก่าล่อยามไปทางอื่น
+const DESV = { V: null, y0: 0, gate: [0, 0], zone: null, merchantAt: [0, -4.0], guards: [], cfg: { gateLz: 9.0 } };
+const DESV_PATROL = [   // [จุดลาดตระเวน เทียบกลางลาน] ยาม 2 คน
+  [[-8.5, 3.2], [8.5, 3.2]],
+  [[5.5, -6.4], [10.0, -6.4]],
+];
+
+DESV.build = (scene) => {
+  const isl = WORLD.byId.desert, V = DESV.V = isl.village, st = new GB(), rng = U.rng(WORLD.seed * 73 + 5);
+  const gy = (x, z) => WORLD.groundAt(x, z) ?? isl.baseH, y0 = DESV.y0 = gy(V.x, V.z);
+  const wx = (lx) => V.x + lx, wz = (lz) => V.z + lz, rgb = GFX.rgb;
+  const mud = rgb('#c9a574'), mud2 = rgb('#bd9a68'), cream = rgb('#e8dcc0'), red = rgb('#a8402a'), turq = rgb('#3f8f8f'), dark = rgb('#241812'), wood = rgb('#6b4a2f'), jar = rgb('#a8643a');
+  DESV.gate = [wx(0), wz(DESV.cfg.gateLz)];
+
+  // บ้านอิฐดินหลังคาแบน: กล่องผนัง + ขอบกำแพงเตี้ยบนหลังคา + ประตูขอบเทอร์ควอยซ์ + ช่องหน้าต่างเล็ก · หอรับลม (badgir) = กล่องสูงบนหลังคามีช่องดำ
+  const house = (lx, lz, W, D, WH, id, tower) => {
+    const x = wx(lx), z = wz(lz), y = gy(x, z);
+    st.box([x, y + WH / 2 - 0.05, z], W, WH + 0.1, D, GFX.mul(mud, 0.96 + 0.08 * U.hash2(id, 3, 4))); st.box([x, y + 0.25, z], W + 0.12, 0.5, D + 0.12, mud2);
+    for (const [bx, bz, bw, bd] of [[0, D / 2 - 0.12, W + 0.1, 0.24], [0, -D / 2 + 0.12, W + 0.1, 0.24], [W / 2 - 0.12, 0, 0.24, D], [-W / 2 + 0.12, 0, 0.24, D]]) st.box([x + bx, y + WH + 0.2, z + bz], bw, 0.4, bd, GFX.mul(mud, 1.06));   // ขอบหลังคา
+    st.box([x + W * 0.2, y + 1.05, z + D / 2 + 0.04], 1.0, 2.0, 0.1, dark); for (const s of [-1, 1]) st.box([x + W * 0.2 + s * 0.6, y + 1.1, z + D / 2 + 0.07], 0.14, 2.2, 0.14, turq); st.box([x + W * 0.2, y + 2.14, z + D / 2 + 0.07], 1.34, 0.14, 0.14, turq);   // ประตู + กรอบเทอร์ควอยซ์
+    for (const wxx of [-W * 0.28]) { st.box([x + wxx, y + 1.7, z + D / 2 + 0.04], 0.5, 0.6, 0.1, dark); st.box([x + wxx, y + 2.04, z + D / 2 + 0.06], 0.7, 0.1, 0.1, turq); }
+    st.box([x + W / 2 + 0.04, y + 1.6, z - D * 0.15], 0.1, 0.5, 0.5, dark);
+    if (tower) { const tx = x + W * 0.25, tz = z - D * 0.2, th = 2.7;   // หอรับลม
+      st.box([tx, y + WH + th / 2, tz], 1.5, th, 1.5, GFX.mul(mud, 1.02)); st.box([tx, y + WH + th + 0.1, tz], 1.7, 0.2, 1.7, GFX.mul(mud, 0.9));
+      for (const s of [-1, 1]) { st.box([tx + s * 0.78, y + WH + th - 0.8, tz], 0.06, 1.0, 0.7, dark); st.box([tx, y + WH + th - 0.8, tz + s * 0.78], 0.7, 1.0, 0.06, dark); st.box([tx, y + WH + th - 1.9, tz + s * 0.78], 0.5, 0.5, 0.06, dark); } }
+    COLL.addBox(x, z, W / 2 + 0.1, D / 2 + 0.1, 0);
+    SOLID.addBox(x - W / 2, x + W / 2, y - 0.3, y + WH + 0.4, z - D / 2, z + D / 2, { house: 'dv' + id });
+    SOLID.addSurf(x - W / 2, x + W / 2, z - D / 2, z + D / 2, y + WH + 0.4, { house: 'dv' + id, role: 'roof' });   // หลังคาแบนยืนได้ (เรเวนพักบนหลังคา)
+    if (tower) SOLID.addBox(x + W * 0.25 - 0.75, x + W * 0.25 + 0.75, y + WH, y + WH + 2.8, z - D * 0.2 - 0.75, z - D * 0.2 + 0.75, { house: 'dv' + id });
+  };
+  house(-9.5, -13.5, 6.4, 5.0, 3.0, 1, false); house(8.5, -13.0, 6.6, 5.4, 3.2, 2, true); house(14.5, 4.5, 5.0, 5.4, 2.9, 3, true);
+
+  // ลานกลางบ้านทางตะวันตก: กำแพงเตี้ยล้อม 3 ด้าน เว้นช่องด้านใต้ · บ่อน้ำ โอ่ง ต้นอินทผลัม
+  { const cx = wx(-13.0), cz = wz(4.5), y = gy(cx, cz), w = 5.2, d = 6.0, hh = 1.5;
+    const wall = (bx, bz, bw, bd) => { st.box([cx + bx, y + hh / 2, cz + bz], bw, hh, bd, mud); st.box([cx + bx, y + hh + 0.07, cz + bz], bw + 0.1, 0.14, bd + 0.1, GFX.mul(mud, 1.1)); COLL.addBox(cx + bx, cz + bz, bw / 2, bd / 2, 0); SOLID.addBox(cx + bx - bw / 2, cx + bx + bw / 2, y - 0.3, y + hh + 0.15, cz + bz - bd / 2, cz + bz + bd / 2, { house: 'dvc', stand: true }); };
+    wall(0, -d / 2, w, 0.4); wall(-w / 2, 0, 0.4, d); wall(w / 2, 0, 0.4, d); wall(-w / 2 + 0.9, d / 2, 1.8, 0.4); wall(w / 2 - 0.9, d / 2, 1.8, 0.4);
+    st.limb([cx, y, cz - 0.5], [cx, y + 0.7, cz - 0.5], 0.7, 0.62, 10, GFX.rgb('#8f8a80')); st.limb([cx, y + 0.62, cz - 0.5], [cx, y + 0.68, cz - 0.5], 0.5, 0.5, 10, rgb('#3f6f8a'));   // บ่อน้ำ
+    COLL.addCircle(cx, cz - 0.5, 0.8);
+    for (const [jx, jz] of [[-1.7, -2.2], [1.8, -2.3], [-1.9, 0.6]]) { st.ball([cx + jx, y + 0.45, cz + jz], 0.38, 0, jar, { sy: 1.15, jit: 0.04, cv: 0.1, seed: 11 }); st.limb([cx + jx, y + 0.85, cz + jz], [cx + jx, y + 0.98, cz + jz], 0.17, 0.2, 7, GFX.mul(jar, 0.8)); COLL.addCircle(cx + jx, cz + jz, 0.4); }
+  }
+  // ต้นอินทผลัม 3 ต้น
+  [[-3.5, 11.5], [12.5, 12.0], [-15.5, -6.5]].forEach(([lx, lz], i) => {
+    const x = wx(lx), z = wz(lz), y = gy(x, z), lean = (i - 1) * 0.5;
+    st.limb([x, y - 0.2, z], [x + lean, y + 4.2, z], 0.34, 0.2, 6, rgb('#7a5a38'), rgb('#6a4a2e'));
+    for (let k = 0; k < 7; k++) { const a = k / 7 * 6.28 + i, hx = Math.cos(a), hz = Math.sin(a); st.limb([x + lean, y + 4.15, z], [x + lean + hx * 2.1, y + 3.55, z + hz * 2.1], 0.17, 0.0, 4, rgb(k % 2 ? '#5a8f3a' : '#6aa244')); }
+    COLL.addCircle(x, z, 0.4);
+  });
+
+  // ตลาด: 3 แผง · เคาน์เตอร์ + ผนังหลังผ้าใบสูง (ทึบ) + ผ้าใบบังแดดแถบสลับสี + ของขายกองเป็นสี
+  const stalls = [[-7.5, '#a8402a', '#e8dcc0', 'cloth'], [0, '#e8dcc0', '#a8402a', 'spice'], [7.5, '#3f7fb8', '#e8dcc0', 'jars']];
+  stalls.forEach(([lx, c1, c2, goods], si) => {
+    const x = wx(lx), zc = wz(-1.8), zb = wz(-4.8), y = gy(x, zc), w = 4.2, bd = zc - zb;
+    st.box([x, y + 0.5, zc], w, 1.0, 0.8, GFX.mul(wood, 1.1)); st.box([x, y + 1.03, zc], w + 0.1, 0.1, 0.92, GFX.mul(wood, 1.3));   // เคาน์เตอร์
+    st.box([x, y + 1.6, zb + 0.08], w, 3.2, 0.16, GFX.mul(rgb(c2), 0.9));                                                              // ผนังหลังผ้าใบทึบ (บังสายตา)
+    for (const a of [-1, 1]) for (const zz of [zc + 0.3, zb + 0.2]) st.box([x + a * (w / 2 - 0.05), 1.45 + y, zz], 0.13, 2.9, 0.13, wood);
+    for (let i = 0; i < 7; i++) st.gable([x - w / 2 - 0.2 + (i + 0.5) * (w + 0.4) / 7, y + 2.95, (zc + zb) / 2 - 0.2], (w + 0.4) / 7, bd + 1.6, 0.5, rgb(i % 2 ? c1 : c2));   // ผ้าใบบังแดด
+    if (goods === 'spice') for (let i = 0; i < 7; i++) { const gx = x - w / 2 + 0.45 + i * (w - 0.9) / 6, col = rgb(['#c8451e', '#e6a02a', '#8a5a2a', '#d8c070', '#a82f2a', '#e0852a', '#6a8a3a'][i]); st.limb([gx, y + 1.06, zc], [gx, y + 1.5, zc], 0.2, 0.0, 6, col); st.ball([gx, y + 1.08, zc - 0.25], 0.14, 0, GFX.mul(col, 0.9), { sy: 0.7, seed: 20 + i }); }
+    else if (goods === 'cloth') for (let i = 0; i < 6; i++) st.box([x - w / 2 + 0.5 + i * 0.7, y + 1.25, zc], 0.5, 0.36, 0.55, rgb(['#a8402a', '#3f7fb8', '#e8dcc0', '#4f9a5a', '#e0a83a', '#7a4a8a'][i]));
+    else for (let i = 0; i < 5; i++) { const jx = x - w / 2 + 0.6 + i * 0.75; st.ball([jx, y + 1.5, zc], 0.3, 0, GFX.mul(jar, 0.9 + 0.1 * (i % 2)), { sy: 1.1, cv: 0.1, seed: 30 + i }); }
+    COLL.addBox(x, zc, w / 2 + 0.05, 0.45, 0); SOLID.addBox(x - w / 2 - 0.05, x + w / 2 + 0.05, y - 0.3, y + 1.1, zc - 0.45, zc + 0.45, { house: 'dvm' + si, stand: true });
+    COLL.addBox(x, zb + 0.08, w / 2, 0.1, 0); SOLID.addBox(x - w / 2, x + w / 2, y - 0.3, y + 3.3, zb, zb + 0.16, { house: 'dvm' + si });
+  });
+  // ผนังผ้าใบด้านข้าง (ปลายตะวันตกของแผง 1 / ปลายตะวันออกของแผง 3) · ผ้าใบกั้นช่องตรอกฝั่งหน้า (เว้นทางเดินแคบ 1 ช่อง) กันยามหน้าแผงมองทะลุตรอก
+  for (const sx of [-9.65, 9.65]) { const x = wx(sx), zc = (wz(-1.8) + wz(-4.8)) / 2, y = gy(x, zc); st.box([x, y + 1.6, zc], 0.16, 3.2, 3.2, GFX.mul(cream, 0.9)); COLL.addBox(x, zc, 0.1, 1.6, 0); SOLID.addBox(x - 0.08, x + 0.08, y - 0.3, y + 3.3, zc - 1.6, zc + 1.6, { house: 'dvm' }); }
+  for (const lx of [-3.75]) { const x = wx(lx), zz = wz(-1.0), y = gy(x, zz); st.box([x, y + 2.7, zz], 3.3, 1.2, 0.1, GFX.mul(red, 0.95)); }   // ผ้าแขวนเหนือปากตรอก (ไม่ชน ไม่บังตัว — แค่ของประดับ)
+  // กระสอบ/ลังตามพื้นตลาด + โอ่งดินหน้าแผง
+  [[-3.6, 1.6, 'sack'], [3.8, 1.8, 'jar'], [11.0, -1.0, 'jar'], [-11.2, -1.5, 'sack'], [1.0, 7.4, 'jar']].forEach(([lx, lz, k], i) => {
+    const x = wx(lx), z = wz(lz), y = gy(x, z);
+    if (k === 'jar') { st.ball([x, y + 0.45, z], 0.4, 0, jar, { sy: 1.15, cv: 0.1, seed: 40 + i }); COLL.addCircle(x, z, 0.42); }
+    else { st.ball([x, y + 0.3, z], 0.45, 0, cream, { sy: 0.7, cv: 0.1, seed: 50 + i }); st.ball([x + 0.35, y + 0.22, z + 0.2], 0.32, 0, GFX.mul(cream, 0.9), { sy: 0.7, cv: 0.1, seed: 60 + i }); COLL.addCircle(x, z, 0.55); }
+  });
+  DESV.mesh = new THREE.Mesh(st.build(), GFX.mat); DESV.mesh.castShadow = true; DESV.mesh.receiveShadow = true; scene.add(DESV.mesh);
+
+  // เขตหวง: หลังเคาน์เตอร์ + ตรอกหลังแผง
+  DESV.zone = { x0: wx(-11.5), x1: wx(11.5), z0: wz(-8.3), z1: wz(-0.4) }; SENSE.zones.push(DESV.zone);
+};
+
+// ยามลาดตระเวน: ตั้งเส้นทาง (พิกัดโลก) ให้ร่างที่ spawn แล้ว (เรียกจาก JOBS.spawn)
+DESV.setPatrol = (e, pts) => { const V = DESV.V; e.ai.pts = pts.map(([lx, lz]) => [V.x + lx, V.z + lz]); e.ai.pi = 1; e.ai.mode = 'go'; e.ai.t = 25; e.ai.px = e.x; e.ai.pz = e.z; e.ai.chk = 1.5; e.ai.sn = 0; };
+
 /* ---- 37-hut.js ---- */
 // 37-hut.js — บ้านฟินน์ (id `hut`): กระท่อมห้องเดียวตามประวัติศาสตร์ · ผนังไม้สานฉาบโคลน (สีโคลนมีโครงไม้) · หลังคามุงฟาง ขอบมน หนา · ไม่มีปล่องไฟ · กองไฟกลางห้อง · เตียงฟาง หม้อ ม้านั่ง
 // ตั้งอยู่ชายเมืองด้านตะวันตก (นอกกำแพงเตี้ย) · เกมใหม่เริ่มที่นี่: ฟินน์ยืนข้างแม่มาร์ธา (นั่งข้างกองไฟ) · พิกัดในไฟล์นี้เป็น "เทียบกลางเกาะ" (x,z) หรือ "เทียบกลางห้อง" (fire/mother/start)
@@ -1703,6 +1801,122 @@ HUT.drawGlow = (t) => {
   for (let i = 0; i < 4; i++) { const age = (t * 0.45 + i / 4) % 1; GLOW.add(HUT.fx + Math.sin(i * 5.1 + t * 1.3) * 0.35, HUT.fy + 0.6 + age * 1.5, HUT.fz + Math.cos(i * 3.7 + t) * 0.3, 0.1 * (1 - age * 0.5), 6, (1 - age) * 0.8); }
 };
 
+/* ---- 37-snowvillage.js ---- */
+// 37-snowvillage.js — หมู่บ้านเกาะหิมะ (M5.6 งานย่อย 2) · บ้านไม้ซุงหลังคาหญ้ามีหิมะทับ 3 หลัง + กระท่อมนายพราน (เข้าได้ แต่ประตูถูกหิมะถล่มปิด) + ยุ้งยกพื้น ราวตากปลา กองฟืน
+// ตั้งบนลานราบ isl.village (30-world.js) · พิกัดในไฟล์นี้ "เทียบกลางลานหมู่บ้าน" (lx,lz) · +x ตะวันออก +z ใต้/ใกล้กล้อง
+// ของประกอบฉากทั้งหมดรวมเป็น mesh เดียว (1 draw call) + กระท่อมนายพรานเป็นบ้านเข้าได้ (HOUSE) + กองหิมะหน้าประตู (mesh แยก ซ่อนได้เมื่อขุดแล้ว)
+// ทางเข้ากระท่อม: (1) สัตว์เล็กลอดช่องที่ฐานผนัง (hole) ข้างกองหิมะ แล้วดึงเชือกกระดิ่ง · (2) เรเวนบินเข้าช่องชายคา (vent) ผนังตะวันออก · ร่างคนเข้าไม่ได้จนกว่านายพรานขุดหิมะออก (71-jobs.js)
+const SNOWV = { h: null, pile: null, pileBox: null, drift: null, bell: null, V: null, y0: 0, cab: [-5.5, -3.0], cfg: { digSec: 5.5 } };
+
+SNOWV.plan = (x, z) => ({
+  id: 'trapper', x, z, W: 5.4, D: 5.8, wallH: 3.0, ridge: 2.1, chimney: { x: 1.5 }, baseColor: '#7d7468',
+  colors: { wall: '#6b4a30', roof: '#7a8a5a', timber: '#4a3626', floor: '#7a5f3e', door: '#5a3d26' },
+  doors: [{ wall: 'S', at: -1.1, w: 1.1, h: 2.0, locked: true, lockMsg: 'หิมะถล่มทับหน้าประตูไว้แน่น — เข้าทางนี้ไม่ได้' }],
+  holes: [{ wall: 'S', at: 1.9, w: 0.8, h: 0.5 }], vents: [{ wall: 'E', at: 0.3, w: 1.1, v0: 2.0, v1: 2.9 }],
+  furniture: [{ kind: 'hearth', x: 0, z: -2.5 }, { kind: 'bed', x: -2.1, z: -1.5 }, { kind: 'table', x: 1.5, z: -0.2 }, { kind: 'bench', x: 1.5, z: 0.95 }, { kind: 'shelf', x: 2.0, z: -2.6 }, { kind: 'crate', x: -2.2, z: 2.2 }, { kind: 'barrel', x: 2.2, z: 2.2 }],
+  resident: null,   // นายพรานเกิดจาก JOBS.spawn (ต้องกำหนดเกาะ/ที่อยู่เอง)
+  noWary: true,
+  build: (h, c) => SNOWV.buildCabin(h, c),
+});
+
+// ส่วนเพิ่มของกระท่อม (เรียกจาก HOUSE.build): ร่องท่อนซุงบนผนัง · หิมะทับหลังคา · เชือกกระดิ่งด้านใน
+SNOWV.buildCabin = (h, c) => {
+  const { fade, shell, wl, vis, wbox, base, FY, T, W, D, WH, px, pz } = c, plan = h.plan, dk = GFX.rgb('#4e341f'), white = GFX.rgb('#eef3f8');
+  SNOWV.h = h;
+  for (const wall of ['N', 'S', 'E', 'W']) {
+    const g = wl[wall], L = (wall === 'S' || wall === 'N' ? W + 2 * T : D) / 2, ops = h.ops.filter((o) => o.wall === wall);
+    for (let v = 0.55; v < WH - 0.3; v += 0.42) HOUSE.cut(-L + 0.1, L - 0.1, v, v + 0.07, ops, (u0, u1, v0, v1) => vis(g, wbox(wall, u0, u1, v0, v1, -T - 0.02, 0.045), dk));
+  }
+  // หิมะทับหลังคา: หลังคาจั่วขาว เล็กกว่าหลังคาหญ้าเล็กน้อย (ชายคาหญ้าโผล่ขอบ) · ความลาดเท่าเดิม
+  const cy = base + WH + 0.1, rh = plan.ridge, rw = W + 2 * T + 0.9, rd = D + 2 * T + 1.0, ins = 0.4, hz = rd / 2 - ins, dy = rh * ins / (rd / 2);
+  fade.gable([px, cy + dy + 0.07, pz], rw - 0.1, rd - 2 * ins, rh - dy + 0.05, white);
+  // เชือกกระดิ่ง (ผนังตะวันตกด้านใน): กระดิ่งทองห้อยใต้คาน เชือกยาวลงมาเกือบถึงพื้น ปมสีแดงที่ปลายเชือก — ตัวเล็กดึงได้
+  const bx = px - W / 2 + 0.5, bz = pz + 0.7, by = base + FY;
+  shell.box([bx, base + WH - 0.35, bz], 0.12, 0.12, 0.7, dk); shell.limb([bx, by + 2.3, bz], [bx, by + 2.65, bz], 0.17, 0.06, 7, GFX.rgb('#d9b04a'), GFX.rgb('#b8902e'));
+  shell.limb([bx, by + 0.85, bz], [bx, by + 2.3, bz], 0.022, 0.022, 4, GFX.rgb('#d8c9a0')); shell.ball([bx, by + 0.82, bz], 0.075, 0, GFX.rgb('#b8452f'), { cv: 0 });
+  SNOWV.bell = { x: bx, y: by + 0.4, z: bz, top: [bx, by + 2.5, bz] };
+};
+
+// หมู่บ้านทั้งหมด (เรียกจาก initScene หลัง TOWN.build)
+SNOWV.build = (scene) => {
+  const isl = WORLD.byId.snow, V = SNOWV.V = isl.village, st = new GB(), rng = U.rng(WORLD.seed * 71 + 3);
+  const gy = (x, z) => WORLD.groundAt(x, z) ?? isl.baseH, y0 = SNOWV.y0 = gy(V.x, V.z);
+  const wx = (lx) => V.x + lx, wz = (lz) => V.z + lz, rgb = GFX.rgb;
+  const white = rgb('#eef3f8'), white2 = rgb('#dfe8f2'), turf = rgb('#7a8a5a'), LOG = ['#6b4a30', '#5e4128', '#7a5638'].map(rgb), wood = rgb('#6b4a2f'), stone = rgb('#8a857c');
+
+  // บ้านไม้ซุง: ท่อนซุงซ้อนแนวนอนไขว้ตรงมุม · หลังคาหญ้า + หิมะทับ · ประตู/หน้าต่าง/ปล่อง
+  const cabin = (lx, lz, W, D, id, chim) => {
+    const x = wx(lx), z = wz(lz), y = gy(x, z), WH = 2.8, n = Math.ceil(WH / 0.4);
+    st.box([x, y + 0.2, z], W + 0.3, 0.5, D + 0.3, stone);   // ฐานหิน
+    for (let k = 0; k < n; k++) {
+      const yy = y + 0.55 + k * 0.4, c = LOG[(k + (id | 0)) % 3];
+      for (const s of [-1, 1]) st.limb([x - W / 2 - 0.3, yy, z + s * D / 2], [x + W / 2 + 0.3, yy, z + s * D / 2], 0.21, 0.21, 6, c, GFX.mul(c, 1.3));
+      for (const s of [-1, 1]) st.limb([x + s * W / 2, yy + 0.2, z - D / 2 - 0.3], [x + s * W / 2, yy + 0.2, z + D / 2 + 0.3], 0.21, 0.21, 6, GFX.mul(c, 0.92), GFX.mul(c, 1.25));
+    }
+    st.box([x + W * 0.18, y + 1.3, z + D / 2 + 0.24], 1.0, 1.9, 0.1, rgb('#3a2a1c')); st.box([x + W * 0.18, y + 2.28, z + D / 2 + 0.26], 1.2, 0.12, 0.12, rgb('#4a3626'));   // ประตู + คานเหนือประตู
+    st.box([x - W * 0.25, y + 1.6, z + D / 2 + 0.25], 0.7, 0.6, 0.08, rgb('#2a3446')); st.box([x - W * 0.25, y + 1.6, z + D / 2 + 0.27], 0.86, 0.74, 0.06, rgb('#4a3626'));   // หน้าต่างบานเล็ก
+    const cy = y + WH + 0.1, rh = 1.6, rw = W + 1.1, rd = D + 1.1, ins = 0.4, dy = rh * ins / (rd / 2);
+    st.gable([x, cy, z], rw, rd, rh, turf);   // หลังคาหญ้า
+    st.gable([x, cy + dy + 0.07, z], rw - 0.1, rd - 2 * ins, rh - dy + 0.05, white);   // หิมะทับ
+    if (chim) { st.box([x + chim, cy + rh * 0.5 + 0.7, z - D * 0.1], 0.7, rh * 1.0 + 1.5, 0.7, stone); st.box([x + chim, cy + rh * 0.5 + 1.5, z - D * 0.1], 0.82, 0.14, 0.82, white); }
+    COLL.addBox(x, z, W / 2 + 0.35, D / 2 + 0.35, 0);
+    SOLID.addBox(x - W / 2 - 0.3, x + W / 2 + 0.3, y - 0.3, y + WH + 0.3, z - D / 2 - 0.3, z + D / 2 + 0.3, { house: 'sv' + id });
+    SOLID.addSurf(x - rw / 2, x + rw / 2, z - rd / 2, z + rd / 2, (xx, zz) => cy + rh * (1 - Math.abs(zz - z) / (rd / 2)), { house: 'sv' + id, role: 'roof' });
+    for (let i = 0; i < 4; i++) st.ball([x + (rng() - 0.5) * (W + 1), y + 0.15, z + D / 2 + 0.7 + rng() * 0.5], 0.5 + rng() * 0.4, 0, white2, { jit: 0.2, sy: 0.4, cv: 0.05, seed: 200 + i + id * 7 });   // กองหิมะหน้าบ้าน
+  };
+  cabin(3.5, -5.0, 5.0, 4.4, 1, 1.4); cabin(7.0, 3.5, 4.2, 4.0, 2, -1.2); cabin(-3.2, 6.0, 4.6, 4.2, 3, 1.2);
+
+  // ยุ้งยกพื้นบนเสา (stabbur): เสา 4 ต้น + ตัวยุ้ง + หลังคาหญ้า/หิมะ + บันไดสั้น
+  { const x = wx(-10), z = wz(3.5), y = gy(x, z);
+    for (const a of [-1, 1]) for (const b of [-1, 1]) st.limb([x + a * 1.0, y - 0.1, z + b * 0.85], [x + a * 1.0, y + 0.95, z + b * 0.85], 0.15, 0.13, 6, wood);
+    st.box([x, y + 1.05, z], 2.6, 0.14, 2.2, GFX.mul(wood, 0.9));
+    for (let k = 0; k < 4; k++) st.box([x, y + 1.35 + k * 0.4, z], 2.3, 0.4, 1.9, LOG[k % 3]);
+    st.gable([x, y + 2.95, z], 3.2, 2.9, 1.2, turf); st.gable([x, y + 3.05, z], 3.1, 2.2, 1.05, white);
+    st.box([x + 0.5, y + 1.55, z + 0.97], 0.8, 1.2, 0.08, rgb('#3a2a1c'));
+    for (let k = 0; k < 3; k++) st.box([x + 1.5 + k * 0.28, y + 0.25 + k * 0.28, z + 0.5], 0.28, 0.1, 0.6, wood);
+    COLL.addBox(x, z, 1.5, 1.2, 0); SOLID.addBox(x - 1.4, x + 1.4, y + 0.9, y + 3.3, z - 1.2, z + 1.2, { house: 'svs' }); }
+
+  // ราวตากปลา/หนัง: เสาสองต้น + คานขวาง + ปลาแห้งห้อย
+  { const x = wx(10.5), z = wz(-3.5), y = gy(x, z);
+    for (const a of [-1, 1]) st.limb([x + a * 1.7, y - 0.1, z], [x + a * 1.7, y + 1.9, z], 0.1, 0.09, 5, wood);
+    st.limb([x - 1.8, y + 1.85, z], [x + 1.8, y + 1.85, z], 0.07, 0.07, 5, wood);
+    for (let i = 0; i < 7; i++) { const fx = x - 1.4 + i * 0.47; st.box([fx, y + 1.35, z + (i % 2 ? 0.05 : -0.05)], 0.1, 0.9, 0.18, rgb(i % 3 ? '#b8bcc4' : '#a8aeb8'), (i - 3) * 0.04); st.box([fx, y + 0.9, z], 0.05, 0.18, 0.14, rgb('#8a8e98')); }
+    COLL.addBox(x, z, 1.8, 0.3, 0); }
+
+  // กองฟืน (ซ้อนเป็นชั้น) + ท่อนฟืนตัด + กองหิมะกระจาย
+  [[0.6, -1.2, 0], [-1.0, 2.2, 1.57], [11, 0.5, 0]].forEach(([lx, lz, ry], i) => {
+    const x = wx(lx), z = wz(lz), y = gy(x, z);
+    for (let r = 0; r < 3; r++) for (let k = 0; k < 4 - r; k++) { const o = (k - (3 - r) / 2) * 0.3, hx = Math.cos(ry), hz = Math.sin(ry); st.limb([x - hz * o - hx * 0.7, y + 0.16 + r * 0.27, z + hx * o - hz * 0.7], [x - hz * o + hx * 0.7, y + 0.16 + r * 0.27, z + hx * o + hz * 0.7], 0.14, 0.14, 6, GFX.mul(LOG[(k + r) % 3], 0.9), rgb('#c9a46a')); }
+    st.ball([x, y + 0.95, z], 0.6, 0, white, { jit: 0.15, sy: 0.3, cv: 0.05, seed: 260 + i });   // หิมะทับกองฟืน
+    COLL.addBox(x, z, ry ? 0.5 : 0.85, ry ? 0.85 : 0.5, 0);
+  });
+  for (let i = 0; i < 16; i++) { const a = rng() * 6.28, d = 6 + rng() * 10, x = wx(Math.cos(a) * d), z = wz(Math.sin(a) * d); if (WORLD.edgeDist(isl, x, z) < 3) continue; st.ball([x, gy(x, z) + 0.05, z], 0.5 + rng() * 0.8, 0, white2, { jit: 0.2, sy: 0.3, cv: 0.05, seed: 300 + i }); }
+
+  SNOWV.mesh = new THREE.Mesh(st.build(), GFX.mat); SNOWV.mesh.castShadow = true; SNOWV.mesh.receiveShadow = true; scene.add(SNOWV.mesh);
+
+  // กระท่อมนายพราน (เข้าได้) · กองหิมะถล่มหน้าประตู
+  const cx = wx(SNOWV.cab[0]), cz = wz(SNOWV.cab[1]);
+  const h = HOUSE.build(Object.assign(SNOWV.plan(cx, cz)), scene), door = h.ops.find((o) => o.kind === 'door'), hole = h.ops.find((o) => o.kind === 'hole');
+  SNOWV.door = door; SNOWV.hole = hole;
+  const pg = new GB(), dx = door.pos[0], dz = h.z + h.D / 2 + HOUSE.T;   // หน้าประตู: กองหิมะสูงถึงคานประตู กว้างกว่าประตูเล็กน้อย
+  [[0, 0.5, 1.15], [-0.9, 0.35, 0.95], [0.85, 0.4, 0.8], [0.1, 1.1, 0.8], [-0.5, 0.95, 0.7], [0.5, 1.35, 0.6], [-1.3, 0.2, 0.6], [1.2, 0.25, 0.55]].forEach(([ox, oy, r], i) => {
+    pg.ball([dx + ox, SNOWV.y0 + oy, dz + 0.45 + (i % 3) * 0.25], r, 0, i % 2 ? white : white2, { jit: 0.16, sy: 0.85, cv: 0.06, seed: 400 + i });
+  });
+  SNOWV.pile = new THREE.Mesh(pg.build(), GFX.mat); SNOWV.pile.castShadow = true; SNOWV.pile.receiveShadow = true; scene.add(SNOWV.pile);
+  SNOWV.pileBox = SOLID.addBox(dx - 1.5, dx + 1.4, SNOWV.y0 - 0.2, SNOWV.y0 + 2.0, dz - 0.1, dz + 1.9, { house: 'svpile' });   // กองหิมะกั้นทางเดิน (ปิดเมื่อขุดแล้ว) — ช่องใต้หิมะ (hole) อยู่นอกกล่องนี้ทางขวา
+  // กองหิมะเล็กข้างช่อง (ปากอุโมงค์ใต้หิมะ): ปีกหิมะเหนือรูให้ดูเป็นช่องที่ลอดได้
+  const hp = hole.pos, sg = new GB();
+  sg.ball([hp[0] - 0.7, SNOWV.y0 + 0.35, dz + 0.5], 0.7, 0, white, { jit: 0.18, sy: 0.7, seed: 450 }); sg.ball([hp[0] + 0.75, SNOWV.y0 + 0.3, dz + 0.45], 0.6, 0, white2, { jit: 0.18, sy: 0.7, seed: 451 }); sg.box([hp[0], SNOWV.y0 + 0.78, dz + 0.1], 1.3, 0.24, 0.5, white);
+  SNOWV.drift = new THREE.Mesh(sg.build(), GFX.mat); SNOWV.drift.castShadow = true; scene.add(SNOWV.drift);
+};
+
+// ขุดเสร็จ: กองหิมะหายไป ประตูปลดล็อกและเปิด (เรียกจาก 71-jobs.js)
+SNOWV.setFree = (v) => {
+  const o = SNOWV.door; if (!o || !SNOWV.h) return;
+  SNOWV.pile.visible = !v; SNOWV.pileBox.on = !v;
+  if (v) { o.locked = false; HOUSE.toggle(SNOWV.h, o, true); }
+};
+
 /* ---- 37-town.js ---- */
 // 37-town.js — เมืองยุคกลางบนเกาะเมือง (id `home`): ผังเมือง (ข้อมูล) + ตัวสร้าง · พิกัดในข้อมูลเป็น "เทียบกลางเกาะ"
 // ผัง (x ขวา/ตะวันออก +, z ใต้/ใกล้กล้อง +): ลานตลาด+บ่อน้ำที่ (0,0) · ถนนตะวันออก-ตะวันตก z=0 และ z=20 · ถนนเหนือ-ใต้ x=0 · หอคอยพ่อมด 5 ชั้นที่ (0,-27)
@@ -1728,7 +1942,7 @@ const TOWN_PLANS = [
 // บ้านทึบประกอบฉาก: [x, z, กว้าง, ลึก, สีผนัง, สีหลังคา]
 // ตัวที่ 7 (ถ้ามี) = { jetty: ชั้นบนยื่นออกด้านหน้า/ข้าง (ตามบ้านเมืองยุคกลาง) · noChim: บ้านเล็ก/คนจนไม่มีปล่องไฟ }
 const TOWN_SOLID = [[-12, 13, 6, 6, '#e3d4b2', '#8f4a36', { jetty: 1 }], [6.5, 13.5, 6, 7, '#d8cdb0', '#6a5a46', { jetty: 1 }], [-26, -9, 5, 6, '#e6dcc2', '#9a5a3a', { noChim: 1 }], [26, -8, 6, 7, '#dccfa8', '#6f7f8c', { jetty: 1 }], [-14, -21, 6, 6, '#e8dcbe', '#a4552f', { noChim: 1 }]];
-const TOWN_STALLS = [[-5, -4.6, '#c8453d', '#f1e6d0'], [4.6, -4.6, '#3f7fb8', '#f1e6d0'], [-4.6, 5.4, '#e0a83a', '#f1e6d0'], [4.8, 5.4, '#4f9a5a', '#f1e6d0']];
+const TOWN_STALLS = [[-5, -4.6, '#c8453d', '#f1e6d0'], [4.6, -4.6, '#3f7fb8', '#f1e6d0'], [-4.6, 5.4, '#e0a83a', '#f1e6d0'], [4.8, 5.4, '#4f9a5a', '#f1e6d0'], [-11, 4.8, '#6a4fa0', '#f1e6d0']];   // แผงที่ 5 = แผงผ้าของช่างตัดเสื้อ (บทที่ 2 · JOBS.spawn วางช่างตัดเสื้อข้างแผง)
 const TOWN_LAMPS = [[3.2, 3.0, 'post'], [11.4, -2.2, 'lantern']];
 
 TOWN.build = (scene) => {
@@ -1848,6 +2062,84 @@ TOWN.build = (scene) => {
   TOWN.start.x += cx; TOWN.start.z += cz;
   TOWN.built = true;
 };
+
+/* ---- 38-skyrocks.js ---- */
+// 38-skyrocks.js — SKY: หินลอยกลางทางระหว่างเกาะ (ที่พักฟื้นพลังเวท) · WIND: กระแสลมร้อนพุ่งขึ้น (M5.6 งานย่อย 2 ข้อ 5)
+// หินลอย = เกาะเล็กจริงใน WORLD.islands (isl.rock = true) ⇒ ลงยืน/แปลงเป็นคน/ตกแล้วตื่นที่จุดพักล่าสุด ใช้ระบบเดิมของเกาะทั้งหมด (PLAYER.isl = หินที่อยู่เหนือล่าสุด)
+//   วางตามเส้นระหว่างขอบเกาะเมือง→หิมะ และ เมือง→ทะเลทราย ที่สัดส่วน f ของช่องว่างขอบถึงขอบ (ข้อมูลล้วน SKY.routes) · เพิ่มหลังเกาะหลัก ไม่ขยับเกาะเดิม
+// ลมร้อน = เสาอนุภาคลอยขึ้น (ไม่ใช่วงบนพื้น) · ตัวที่บินอยู่ในเสา: ถูกยกขึ้น + ไม่เสียพลังเวท (55-bodies.js _fly อ่าน WIND.lift)
+// ปรับได้หลังลองเล่น: f ของหินแต่ละก้อน (ระยะ) · side (เบี่ยงข้าง) · WIND.cfg.lift (แรงยก) · r (รัศมีเสา)
+const SKY = {
+  routes: [
+    { id: 'hs', a: 'home', b: 'snow',   biome: 'rockSnow',   rocks: [{ f: 0.36, r: 6.6, side: 2.2, dy: 1.0 }, { f: 0.70, r: 5.8, side: -2.4, dy: 1.5 }], winds: [{ f: 0.13 }, { f: 0.53 }] },
+    { id: 'hd', a: 'home', b: 'desert', biome: 'rockDesert', rocks: [{ f: 0.36, r: 6.6, side: -2.2, dy: 1.0 }, { f: 0.70, r: 5.8, side: 2.4, dy: 1.0 }], winds: [{ f: 0.13 }, { f: 0.53 }] },
+  ],
+  rocks: [], seen: false,
+};
+const WIND = { cols: [], cfg: { lift: 0.9, r: 4.6, h: 42 }, sys: null };
+
+// เพิ่มหินลอยเป็นเกาะ (เรียกท้าย WORLD.build) + จุดตั้งเสาลม
+SKY.addRocks = () => {
+  SKY.rocks = []; WIND.cols = [];
+  for (const R of SKY.routes) {
+    const A = WORLD.byId[R.a], B = WORLD.byId[R.b], ang = Math.atan2(B.z - A.z, B.x - A.x), ux = Math.cos(ang), uz = Math.sin(ang), nx = -uz, nz = ux;
+    const eA = WORLD.outline(A, ang), eB = WORLD.outline(B, ang + Math.PI);
+    const p0 = [A.x + ux * eA, A.z + uz * eA], p1 = [B.x - ux * eB, B.z - uz * eB];
+    R.edge = { a: p0, b: p1, gap: Math.hypot(p1[0] - p0[0], p1[1] - p0[1]) };
+    const at = (f, side) => [p0[0] + (p1[0] - p0[0]) * f + nx * side, p0[1] + (p1[1] - p0[1]) * f + nz * side];
+    R.rocks.forEach((q, i) => {
+      const [x, z] = at(q.f, q.side), n = SKY.rocks.length, rg = U.rng(WORLD.seed * 53 + n * 17 + 9), baseH = U.lerp(A.baseH, B.baseH, q.f) + q.dy;
+      const isl = { id: 'rock.' + R.id + i, biome: R.biome, rock: true, route: R.id, x, z, baseH, radius: q.r, sd: (10 + n) * 1013 + 5, ox: rg() * 100, oz: rg() * 100, hills: [], flats: [], terrain: BIOMES[R.biome].terrain };
+      isl.depth = q.r * 1.6;
+      isl.flats.push({ x, z, r: q.r * 0.62, blend: 2.4, h: 0.1, kind: 'rockTop' });   // ผิวบนราบ (แปลงเป็นคนได้)
+      WORLD.islands.push(isl); WORLD.byId[isl.id] = isl; SKY.rocks.push(isl);
+    });
+    R.winds.forEach((q) => {
+      const [x, z] = at(q.f, 0), by = U.lerp(A.baseH, B.baseH, q.f);
+      WIND.cols.push({ x, z, r: WIND.cfg.r, y0: by - 4, y1: by - 4 + WIND.cfg.h, route: R.id });
+    });
+  }
+};
+
+// แรงยกที่ตัว m (0..1) · 0 = ไม่อยู่ในเสาลม · แกนเสาเต็ม 1 ขอบเสาไล่ลง
+WIND.lift = (m) => {
+  let w = 0;
+  for (const c of WIND.cols) {
+    if (m.y < c.y0 || m.y > c.y1) continue;
+    const d = Math.hypot(m.x - c.x, m.z - c.z); if (d >= c.r) continue;
+    w = Math.max(w, U.smooth((c.r - d) / (c.r * 0.5)));
+  }
+  return w;
+};
+
+// เสาอนุภาค: จุดลอยวนขึ้นเป็นเกลียวภายในรัศมีเสา (อนุภาค 1 ชุด = 1 draw call · ซ่อนเมื่อไกลเกาะเมือง)
+SKY.build = () => {
+  const cols = WIND.cols, per = 44, N = cols.length * per;
+  const fill = (i, rng, pos) => { const c = cols[i % cols.length]; pos[i * 3] = c.x; pos[i * 3 + 1] = c.y0; pos[i * 3 + 2] = c.z; };
+  const vs = _pointVS(`uniform float uR; uniform float uH; uniform float uSize;
+void main(){
+  float y = mod(aR.w * uH + uTime * (4.0 + aR.z * 3.5), uH);
+  float a = aR.x * 6.2831 + uTime * 1.1 + y * 0.14;
+  float rr = uR * (0.2 + 0.8 * aR.y) * (1.0 - 0.3 * y / uH);
+  vec3 p = position + vec3(cos(a) * rr, y, sin(a) * rr);
+  vA = smoothstep(0.0, 3.0, y) * smoothstep(uH, uH - 9.0, y) * 0.9;
+  gl_Position = projectionMatrix * viewMatrix * vec4(p, 1.0);
+  gl_PointSize = max(2.5, uSize * uPx * (0.7 + 0.6 * aR.y));
+}`);
+  WIND.sys = WEATHER.mk('wind', N, fill, vs, _fsSoft('0.9'), 'normal', { uR: { value: WIND.cfg.r }, uH: { value: WIND.cfg.h }, uSize: { value: 0.9 }, uCol: { value: new THREE.Color(1.0, 0.86, 0.58) } });
+  WIND.sys.isl = { id: 'home' };
+};
+
+// ทุกเฟรม: ซ่อนเสาลมเมื่อตัวที่กล้องตามอยู่ไกลทุกเสา > 150 · บทสอนการบินข้ามเกาะอยู่ใน 69-tutor.js (id 'skyfly')
+SKY.update = () => {
+  if (!WIND.sys) return;
+  const B = PLAYER.camBody(); let near = false;
+  for (const c of WIND.cols) if (Math.hypot(B.x - c.x, B.z - c.z) < 150) { near = true; break; }
+  WIND.sys.mesh.visible = near;
+  WIND.sys.u.uCol.value.setRGB(1.0 - 0.45 * DN.night, 0.86 - 0.4 * DN.night, 0.58 - 0.1 * DN.night);
+};
+// ตัวนำทางตรวจ: หินใกล้สุดที่ตัว/ขอบเกาะที่อยู่ล่าสุด
+SKY.restOf = (m) => (m.isl ? m.isl.id : null);
 
 /* ---- 38-towerdata.js ---- */
 // 38-towerdata.js — ข้อมูลล้วนของหอคอยพ่อมด 5 ชั้น (ไม่มีตรรกะ) · ตัวสร้างอยู่ 39-towerbuild.js · ตรรกะรันไทม์อยู่ 39-tower.js
@@ -3503,6 +3795,158 @@ RIG.kinds.broom = {
   },
 };
 
+/* ---- 54-folk-rig.js ---- */
+// 54-folk-rig.js — rig ของคนและสัตว์เล็กบนเกาะหิมะ/ทะเลทราย (M5.6 งานย่อย 2) · ชิ้นส่วนน้อย ประหยัด draw call
+// furfolk (หิมะ 4 ชิ้น: coat[tint 'coat'] head legL legR) · robefolk (ทะเลทราย 2 ชิ้น: robe[tint 'robe'] head) · marketguard (3 ชิ้น: body[tint 'robe'] head gear)
+// ermine (3 ชิ้น: body[tint 'fur'] head tail) · lizard (3 ชิ้น: body head tail ทั้งหมด tint 'skin')
+// def.isle = id เกาะที่ rig นี้อยู่ · BODY.render ซ่อน crowd ทั้งชุดเมื่อตัวที่กล้องตามอยู่ไกลเกาะนั้น (กล้องไม่ตัดนอกจอ = นับ draw call ตลอด จึงซ่อนเอง)
+// พิกัด rig: จุดกำเนิด = ระดับเท้า · +Z = หน้า · คนสูง ~2.5 ก่อนคูณสเกลของชนิดร่าง · สีขาว (_W) = รับสี tint ของชิ้นนั้น · สีอื่น = สีตายตัว
+const _fkSkin = GFX.rgb('#e8c3a2'), _fkEye = GFX.rgb('#1b1b24'), _fkFur = GFX.rgb('#d8d2c4'), _fkBrown = GFX.rgb('#6a5238'), _fkDark = GFX.rgb('#2a1f18');
+const _fkWalk = (r, S, dt) => {   // ขา/ลำตัวแกว่งตามก้าว (ใช้ร่วม furfolk/robefolk/marketguard): คืน { sw, bob, a, y }
+  const w = S.walk01, k = 1 - Math.exp(-10 * dt); r.hopPh += dt * (3.5 + 9 * w); r.cur.air += ((S.air ? 1 : 0) - r.cur.air) * k;
+  const a = r.cur.air, sw = Math.sin(r.hopPh) * w * (1 - a), bob = Math.abs(Math.sin(r.hopPh)) * w * (1 - a);
+  return { w, sw, bob, a, y: 0.07 * bob + 0.012 * Math.sin(S.t * 2.1) };
+};
+const _fkFace = (g, ear) => {
+  g.ball([0, 0, 0], 0.4, 1, _fkSkin, { jit: 0.03, cv: 0.06, seed: 21 });
+  g.ball([0, -0.07, 0.39], 0.06, 0, GFX.mul(_fkSkin, 0.88), { cv: 0 });
+  g.ball([0.15, 0.03, 0.355], 0.055, 0, _fkEye, { cv: 0 }); g.ball([-0.15, 0.03, 0.355], 0.055, 0, _fkEye, { cv: 0 });
+};
+
+// ---- ชาวบ้านเกาะหิมะ: เสื้อโค้ทขนสัตว์ยาวถึงเข่า + หมวกคลุมขอบขน + ผ้าพันคอ + บูต ----
+RIG.kinds.furfolk = {
+  isle: 'snow',
+  parts: [
+    { id: 'coat', pos: [0, 1.5, 0], scale: [1, 1, 0.8], tint: 'coat', build: (g) => {
+      g.limb([0, -0.95, 0], [0, 0.42, 0], 0.6, 0.44, 8, _W);                                   // โค้ทยาวบานชาย
+      g.limb([0, -1.0, 0], [0, -0.82, 0], 0.64, 0.61, 8, GFX.mul(_W, 0.62));                  // ชายโค้ทหนาเป็นขน
+      g.limb([0, -0.25, 0], [0, -0.12, 0], 0.5, 0.5, 8, GFX.mul(_W, 0.45));                   // เข็มขัดหนัง
+      g.limb([0, 0.36, 0], [0, 0.56, 0], 0.46, 0.36, 8, GFX.mul(_W, 0.62));                   // ปกขนสัตว์
+      for (const s of [-1, 1]) {
+        g.ball([s * 0.5, 0.3, 0], 0.2, 0, _W, { cv: 0.04 });
+        g.limb([s * 0.52, 0.28, 0], [s * 0.58, -0.5, 0.16], 0.17, 0.18, 6, _W);               // แขนเสื้อ
+        g.limb([s * 0.58, -0.5, 0.16], [s * 0.6, -0.64, 0.2], 0.2, 0.2, 6, GFX.mul(_W, 0.5));  // ปลายแขน/ถุงมือขน
+      }
+    } },
+    { id: 'head', pos: [0, 2.24, 0], build: (g) => {
+      _fkFace(g);
+      g.ball([0, 0.1, -0.14], 0.5, 1, _fkBrown, { jit: 0.04, cv: 0.08, seed: 31 });          // หมวกคลุม
+      g.limb([0, 0.22, -0.5], [0, -0.05, -0.92], 0.2, 0, 5, GFX.mul(_fkBrown, 0.9));          // ปลายหมวกชี้ไปข้างหลัง
+      for (let i = 0; i < 9; i++) { const a = (i / 8) * Math.PI * 1.25 - Math.PI * 0.12; g.ball([Math.cos(a) * 0.4, 0.12 + Math.sin(a) * 0.36, 0.2 - Math.sin(a) * 0.04], 0.1, 0, _fkFur, { jit: 0.2, seed: 40 + i }); }   // ขอบขนรอบหน้า
+      g.limb([0, -0.36, 0], [0, -0.26, 0], 0.37, 0.35, 8, GFX.rgb('#a8402a'));                // ผ้าพันคอ
+      g.box([0.18, -0.5, 0.3], 0.14, 0.4, 0.06, GFX.rgb('#a8402a'), 0.1);                       // ชายผ้าพันคอห้อย
+    } },
+    { id: 'legL', pos: [0.19, 0.98, 0], build: (g) => { g.limb([0, -0.6, 0], [0, 0.04, 0], 0.15, 0.19, 6, GFX.rgb('#4a3a2c')); g.limb([0, -0.92, 0], [0, -0.5, 0], 0.19, 0.17, 6, _fkDark); g.limb([0, -0.52, 0], [0, -0.46, 0], 0.22, 0.22, 6, _fkFur); g.box([0, -0.9, 0.1], 0.3, 0.16, 0.5, _fkDark); } },
+    { id: 'legR', pos: [-0.19, 0.98, 0], build: (g) => { g.limb([0, -0.6, 0], [0, 0.04, 0], 0.15, 0.19, 6, GFX.rgb('#4a3a2c')); g.limb([0, -0.92, 0], [0, -0.5, 0], 0.19, 0.17, 6, _fkDark); g.limb([0, -0.52, 0], [0, -0.46, 0], 0.22, 0.22, 6, _fkFur); g.box([0, -0.9, 0.1], 0.3, 0.16, 0.5, _fkDark); } },
+  ],
+  animate(r, S, dt) {
+    const p = r.p, q = _fkWalk(r, S, dt);
+    p.legL.rotation.x = 0.85 * q.sw + q.a * 0.5; p.legR.rotation.x = -0.85 * q.sw - q.a * 0.25;
+    p.coat.position.y = 1.5 + q.y; p.head.position.y = 2.24 + q.y; p.coat.rotation.x = 0.1 * q.w; p.coat.rotation.z = 0.05 * q.sw; p.head.rotation.z = -0.04 * q.sw;
+  },
+};
+
+// ---- ชาวบ้านเกาะทะเลทราย: เสื้อคลุมยาวถึงข้อเท้า + ผ้าคาดเอว + ผ้าโพกหัว ----
+RIG.kinds.robefolk = {
+  isle: 'desert',
+  parts: [
+    { id: 'robe', pos: [0, 1.2, 0], scale: [1, 1, 0.82], tint: 'robe', build: (g) => {
+      g.limb([0, -1.15, 0], [0, 0.95, 0], 0.7, 0.44, 8, _W);                                   // เสื้อคลุมยาวบานชาย
+      g.limb([0, -1.15, 0], [0, -1.02, 0], 0.72, 0.7, 8, GFX.mul(_W, 0.78));                  // ชายเสื้อ
+      g.limb([0, -0.12, 0], [0, 0.02, 0], 0.55, 0.53, 8, GFX.rgb('#7a2f2a'));                  // ผ้าคาดเอวสีแดงเข้ม
+      g.limb([0, 0.9, 0], [0, 1.02, 0], 0.4, 0.3, 8, GFX.mul(_W, 0.8));
+      for (const s of [-1, 1]) { g.ball([s * 0.5, 0.78, 0], 0.2, 0, _W, { cv: 0.04 }); g.limb([s * 0.52, 0.76, 0], [s * 0.7, -0.2, 0.12], 0.17, 0.24, 6, _W); g.ball([s * 0.7, -0.24, 0.12], 0.17, 0, GFX.mul(_W, 0.85), { cv: 0.04 }); }   // แขนเสื้อกว้าง
+    } },
+    { id: 'head', pos: [0, 2.24, 0], build: (g) => {
+      _fkFace(g);
+      g.ball([0, 0.18, -0.04], 0.5, 1, GFX.rgb('#e8dcc0'), { jit: 0.03, sy: 0.7, cv: 0.08, seed: 33 });   // ผ้าโพกหัวทรงกลมแบน
+      g.limb([0, 0.1, 0], [0, 0.2, 0], 0.46, 0.46, 9, GFX.rgb('#3f8f8f'));                                   // แถบผ้าสีเทอร์ควอยซ์รอบหน้าผาก
+      g.limb([0, 0.25, -0.38], [0, -0.35, -0.6], 0.18, 0.1, 5, GFX.rgb('#e8dcc0'));                          // ชายผ้าโพกห้อยหลัง
+    } },
+  ],
+  animate(r, S, dt) {
+    const p = r.p, q = _fkWalk(r, S, dt);
+    p.robe.position.y = 1.2 + q.y * 0.6; p.head.position.y = 2.24 + q.y; p.robe.rotation.z = 0.07 * q.sw; p.robe.rotation.x = 0.06 * q.w; p.head.rotation.z = -0.04 * q.sw;
+  },
+};
+
+// ---- ยามตลาด: เสื้อคลุมสั้น/กางเกงบาน (tint 'robe') + หมวกเหล็กทรงกรวยพันผ้าแดง + หอกค้ำ ----
+RIG.kinds.marketguard = {
+  isle: 'desert',
+  parts: [
+    { id: 'body', pos: [0, 1.2, 0], scale: [1, 1, 0.85], tint: 'robe', build: (g) => {
+      g.limb([0, -1.15, 0], [0, 0.95, 0], 0.58, 0.46, 8, _W);
+      g.limb([0, -0.05, 0], [0, 0.1, 0], 0.54, 0.52, 8, GFX.mul(_W, 0.5));                      // เข็มขัด
+      g.limb([0, 0.3, 0], [0, 0.95, 0], 0.5, 0.46, 8, GFX.mul(_W, 0.78));                       // เสื้อเกราะผ้าหนาช่วงอก
+      for (const s of [-1, 1]) { g.ball([s * 0.5, 0.78, 0], 0.22, 0, GFX.mul(_W, 0.6), { cv: 0.04 }); g.limb([s * 0.52, 0.76, 0], [s * 0.6, -0.2, 0.12], 0.17, 0.2, 6, _W); }
+    } },
+    { id: 'head', pos: [0, 2.24, 0], build: (g) => {
+      _fkFace(g);
+      g.ball([0, -0.16, 0.22], 0.14, 0, _fkDark, { sy: 0.4, cv: 0 });                              // หนวด
+      g.limb([0, 0.18, 0], [0, 0.78, 0], 0.44, 0.0, 8, GFX.rgb('#8e93a4'));                       // หมวกเหล็กทรงกรวย
+      g.limb([0, 0.13, 0], [0, 0.26, 0], 0.5, 0.46, 9, GFX.rgb('#a83a3a'));                       // ผ้าแดงพันขอบหมวก
+      g.box([0, 0.12, 0.42], 0.08, 0.34, 0.05, GFX.rgb('#6a7080'));                               // สันกันจมูก
+    } },
+    { id: 'gear', pos: [0, 0, 0], build: (g) => {
+      g.limb([0.78, 0.0, 0.18], [0.78, 3.0, 0.18], 0.05, 0.045, 5, GFX.rgb('#6a4a2a'));            // ด้ามหอก (ค้ำพื้น — ไม่ใช่อาวุธ ถือไว้เฉยๆ)
+      g.limb([0.78, 2.95, 0.18], [0.78, 3.4, 0.18], 0.1, 0.0, 5, GFX.rgb('#b0b6c4'));              // ปลายหอก
+      g.box([0.78, 2.7, 0.18], 0.2, 0.2, 0.04, GFX.rgb('#a83a3a'));                                 // ธงเล็ก
+    } },
+  ],
+  animate(r, S, dt) {
+    const p = r.p, q = _fkWalk(r, S, dt);
+    p.body.position.y = 1.2 + q.y * 0.6; p.head.position.y = 2.24 + q.y; p.body.rotation.z = 0.06 * q.sw; p.body.rotation.x = 0.05 * q.w;
+    p.gear.position.y = q.bob * 0.1; p.gear.rotation.z = 0.04 * q.sw;
+  },
+};
+
+// ---- เออร์มีน (สัตว์เล็กเกาะหิมะ ขนขาว ปลายหางดำ): ตัวยาว ~0.7 ก่อนคูณสเกล ----
+const _fkW = GFX.rgb('#f4f1ea'), _fkTip = GFX.rgb('#14110e'), _fkNose = GFX.rgb('#201a18');
+RIG.kinds.ermine = {
+  isle: 'snow',
+  parts: [
+    { id: 'body', pos: [0, 0.13, 0], scale: [0.85, 0.8, 2.1], tint: 'fur', build: (g) => {
+      g.ball([0, 0, 0], 0.15, 1, _W, { jit: 0.03, cv: 0.08, seed: 71 });
+      for (const sz of [-1, 1]) for (const sx of [-1, 1]) g.box([sx * 0.07, -0.1, sz * 0.09], 0.05, 0.12, 0.05, GFX.mul(_W, 0.85));   // ขาสั้นสี่ขา (ยืดตามสเกลลำตัว)
+    } },
+    { id: 'head', pos: [0, 0.17, 0.3], build: (g) => {
+      g.ball([0, 0, 0], 0.1, 1, _fkW, { jit: 0.03, cv: 0.06, seed: 72 }); g.limb([0, -0.015, 0.06], [0, -0.03, 0.17], 0.065, 0.015, 5, _fkW); g.ball([0, -0.03, 0.18], 0.02, 0, _fkNose, { cv: 0 });
+      g.ball([0.06, 0.03, 0.07], 0.02, 0, _fkNose, { cv: 0 }); g.ball([-0.06, 0.03, 0.07], 0.02, 0, _fkNose, { cv: 0 });
+      g.ball([0.07, 0.09, -0.03], 0.045, 0, _fkW, { sy: 0.7, cv: 0 }); g.ball([-0.07, 0.09, -0.03], 0.045, 0, _fkW, { sy: 0.7, cv: 0 });
+    } },
+    { id: 'tail', pos: [0, 0.14, -0.3], build: (g) => { g.limb([0, 0, 0], [0, -0.01, -0.26], 0.04, 0.035, 5, _fkW); g.limb([0, -0.01, -0.26], [0, -0.01, -0.36], 0.036, 0.0, 5, _fkTip); } },
+  ],
+  animate(r, S, dt) {
+    const p = r.p, w = S.walk01; r.hopPh += dt * (4 + 20 * w);
+    const sw = Math.sin(r.hopPh) * w, bob = Math.abs(sw) * 0.04, sn = Math.sin(S.t * 3.1 + r.hopPh * 0.1) * (1 - w);
+    p.body.position.y = 0.13 + bob; p.body.rotation.x = 0.12 * sw; p.head.position.y = 0.17 + bob + 0.01 * Math.sin(S.t * 5) * (1 - w); p.head.rotation.x = 0.15 * sn + 0.15 * w * Math.sin(r.hopPh * 2) - (S.air ? 0.3 : 0);
+    p.tail.rotation.y = 0.45 * Math.sin(S.t * 2.6 + r.hopPh) * (0.3 + w); p.tail.rotation.x = 0.12 * sw;
+  },
+};
+
+// ---- กิ้งก่า (สัตว์เล็กเกาะทะเลทราย): ลำตัวแบน ขาแผ่ หางยาว · tint 'skin' ----
+RIG.kinds.lizard = {
+  isle: 'desert',
+  parts: [
+    { id: 'body', pos: [0, 0.07, 0], scale: [1, 0.45, 2.0], tint: 'skin', build: (g) => {
+      g.ball([0, 0, 0], 0.13, 1, _W, { jit: 0.03, cv: 0.1, seed: 81 });
+      for (const sz of [-1, 1]) for (const sx of [-1, 1]) g.limb([sx * 0.09, -0.02, sz * 0.07], [sx * 0.2, -0.13, sz * 0.09], 0.035, 0.025, 4, GFX.mul(_W, 0.8));   // ขาแผ่ข้าง
+      for (let i = 0; i < 4; i++) g.box([0, 0.12, -0.12 + i * 0.09], 0.05, 0.05, 0.05, GFX.mul(_W, 0.7));                                                            // สันหลัง
+    } },
+    { id: 'head', pos: [0, 0.075, 0.27], tint: 'skin', build: (g) => {
+      g.ball([0, 0, 0], 0.075, 1, _W, { jit: 0.03, cv: 0.06, seed: 82 }); g.limb([0, -0.01, 0.03], [0, -0.02, 0.15], 0.06, 0.02, 5, _W);
+      g.ball([0.05, 0.04, 0.03], 0.025, 0, _fkEye, { cv: 0 }); g.ball([-0.05, 0.04, 0.03], 0.025, 0, _fkEye, { cv: 0 });
+    } },
+    { id: 'tail', pos: [0, 0.06, -0.26], tint: 'skin', build: (g) => { g.limb([0, 0, 0], [0, -0.01, -0.52], 0.065, 0.0, 5, _W); } },
+  ],
+  animate(r, S, dt) {
+    const p = r.p, w = S.walk01; r.hopPh += dt * (5 + 22 * w);
+    const sw = Math.sin(r.hopPh) * w;
+    p.body.rotation.y = 0.18 * sw; p.head.rotation.y = -0.1 * sw + 0.1 * Math.sin(S.t * 1.7) * (1 - w); p.tail.rotation.y = 0.55 * Math.sin(r.hopPh - 1) * (0.3 + w);
+    p.head.position.y = 0.075 + 0.015 * Math.max(0, Math.sin(S.t * 0.9)) * (1 - w);
+  },
+};
+
 /* ---- 55-bodies.js ---- */
 // 55-bodies.js — แม่แบบการเคลื่อนที่ (BODIES.modes) + ชนิดร่าง (BODIES.kinds)
 // mode = ฟังก์ชัน update(ตัว, input, dt) ที่อ่านค่าตัวเลขจาก ตัว.kind (ชนิดร่าง) · ระบบอื่นเช็ก "แท็ก" ไม่เช็กชื่อชนิดร่าง
@@ -3654,6 +4098,8 @@ BODIES._fly = (m, inp, dt, K, wx, wz) => {
   if (inp.up && !tired) tvy = K.climb;
   else if (inp.down) tvy = -K.descend;
   else if (tired) tvy = (m.isl && m.y < m.isl.baseH - 6) ? -K.sinkVoid : -K.sinkTired;
+  const wd = WIND.lift(m);   // กระแสลมร้อน (38-skyrocks.js): ยกขึ้นเอง + ไม่เสียพลังเวทระหว่างอยู่ในเสาลม
+  if (wd > 0 && !inp.down) tvy = Math.max(tvy, K.climb * WIND.cfg.lift * wd);
   if (tvy > 0 && m.y > K.ceiling - 6) tvy *= U.clamp((K.ceiling - m.y) / 6, 0, 1);
   m.vy = U.damp(m.vy, tvy, K.vertAccel, dt);
   m.x += m.vx * dt; m.y += m.vy * dt; m.z += m.vz * dt;
@@ -3663,6 +4109,7 @@ BODIES._fly = (m, inp, dt, K, wx, wz) => {
   let drain = K.drainBase + K.drainMove * Math.min(1, Math.hypot(m.vx, m.vz) / K.speed);
   if (inp.up && !tired) drain += K.drainClimb;
   if (inp.down) drain *= K.drainDown;
+  if (wd > 0) drain *= 1 - wd;
   m.energy = Math.max(0, m.energy - drain * dt);
   // ลงจอด: พื้นดินของเกาะ (ไม่ใช่ใต้ท้องเกาะ) หรือพื้นผิวยืนได้ (พื้นบ้าน หลังคา โต๊ะ ชั้น แผงตลาด) · อยู่ในตัวเกาะ (ครึ่งบน) -> ถูกยกขึ้นผิวเกาะ · ใต้เกาะบินลอดได้
   const s = WORLD.islandAt(m.x, m.z);
@@ -3677,6 +4124,33 @@ BODIES._fly = (m, inp, dt, K, wx, wz) => {
   if (top === gT && m.y < gT - 1.5) { m.y = U.damp(m.y, gT, 10, dt); if (m.vy < 0) m.vy = 0; return; }
   m.y = top; m.vy = 0; m.vx *= 0.4; m.vz *= 0.4; m.state = 'ground';
 };
+
+/* ---- 55-folk-kinds.js ---- */
+// 55-folk-kinds.js — ชนิดร่างของบทที่ 2 (ข้อมูลล้วน · M5.6 งานย่อย 2): คนในเมือง/เกาะหิมะ/เกาะทะเลทราย + สัตว์เล็กประจำเกาะ
+// ทุกชนิดต่อจาก BODIES.kinds.villager (55-bodies.js) · rig อยู่ 54-folk-rig.js · ปริศนา/เรื่องเช็กแท็ก ไม่เช็กชื่อชนิด
+const _fkV = BODIES.kinds.villager;
+// ช่างตัดเสื้อ: ยืนแถวแผงผ้า เดินวนในวงแคบ · ใช้ rig person เดิม (tint shirt/pants/skin ตามจุดเกิด)
+BODIES.kinds.tailor = Object.assign({}, _fkV, { name: 'ช่างตัดเสื้อ', wander: { radius: 2.4, min: 0.8, rest: [2.5, 6], speed: 0.45 } });
+// ชาวบ้านเกาะหิมะ/ทะเลทราย: เดินเตร่ในหมู่บ้าน (สายมนุษย์ ล็อก)
+BODIES.kinds.furfolk = Object.assign({}, _fkV, { name: 'ชาวบ้านเกาะหิมะ', rig: 'furfolk', wander: { radius: 8, min: 1.5, rest: [2, 6], speed: 0.45 } });
+BODIES.kinds.robefolk = Object.assign({}, _fkV, { name: 'ชาวบ้านเกาะทะเลทราย', rig: 'robefolk', wander: { radius: 8, min: 1.5, rest: [2, 6], speed: 0.45 } });
+// นายพราน (ติดในกระท่อมหิมะ) · พ่อค้าเครื่องเทศ (หลังแผง): ไม่มีการมองเห็น/ความสงสัย (ไม่ใช่ผู้ถูกหลอก) · บังคับจิตไม่ได้ · คุยได้
+BODIES.kinds.trapper = Object.assign({}, _fkV, { name: 'นายพราน', rig: 'furfolk', noMind: true, sense: null, wander: { radius: 1.8, min: 0.6, rest: [2, 5], speed: 0.45 } });
+BODIES.kinds.merchant = Object.assign({}, _fkV, { name: 'พ่อค้าเครื่องเทศ', rig: 'robefolk', noMind: true, sense: null, ai: null, wander: null });
+// ยามตลาด (ทะเลทราย): เดินลาดตระเวนตามจุด (e.ai.pts) · มองได้ไกลปานกลาง มุมแคบกว่าชาวบ้านเล็กน้อย · ไล่จับได้ แต่ไม่ทำร้าย (จับ = ถูกพาออกนอกตลาด ของไม่หล่น)
+//   escort = ฟังก์ชันคืนจุดที่พาออกไป [x,z] (61-sense.js SENSE.catch)
+BODIES.kinds.marketguard = Object.assign({}, _fkV, { name: 'ยามตลาด', rig: 'marketguard', ai: 'patrol', wander: null, patrol: { speed: 0.5, pause: [1.4, 3.2] },
+  sense: { range: 12, ang: 0.8, near: 1.5, night: 0.5, eyeK: 0.88, hear: 1.0, fillMul: 2.4, chase: true, searchSpeed: 0.7, chaseSpeed: 1.0 },
+  escort: () => DESV.gate });
+// สัตว์เล็กประจำเกาะ (สายสัตว์ ปลดล็อกตั้งแต่ต้น · small = ลอดรูหนู/ช่องใต้หิมะ · paws = ดึงเชือก)
+const _fkAnimal = { mode: 'walk', school: 'animal', screenK: 1.35, airAccel: 3, gravity: 24, maxFall: 30, stepDown: 0.5, stepUp: 0.2, radius: 0.16, top: 0.3, fallDepth: 22, ai: 'wander' };
+BODIES.kinds.ermine = Object.assign({}, _fkAnimal, { name: 'เออร์มีน', rig: 'ermine', scale: 0.85, tags: ['small', 'paws', 'animal'],
+  threat: { indoor: 0.95, outdoor: 0.15 }, noise: { walk: 1.6, run: 3.2, interval: 0.45 }, zoom: { min: 6, max: 50, def: 11 }, speed: 3.2, run: 1.8, accel: 14, jump: 4.4,
+  wander: { radius: 6, rest: [0.8, 3], speed: 0.75 } });
+// กิ้งก่า: ส่งเสียงดังกว่า (สะเก็ดทราย/เสียงฟู่) และน่าสงสัยกว่าหนูเมื่อยามเห็น · ใช้ล่อยามให้ไปดูที่อื่น
+BODIES.kinds.lizard = Object.assign({}, _fkAnimal, { name: 'กิ้งก่า', rig: 'lizard', scale: 0.9, tags: ['small', 'paws', 'animal'],
+  threat: { indoor: 0.95, outdoor: 0.55 }, noise: { walk: 6.5, run: 9.0, interval: 0.35 }, zoom: { min: 6, max: 50, def: 11 }, speed: 3.4, run: 1.9, accel: 14, jump: 3.6,
+  wander: { radius: 6, rest: [0.8, 3], speed: 0.75 } });
 
 /* ---- 56-possess.js ---- */
 // 56-possess.js — MIND: บังคับจิต (ADR 0002) · เลือกเป้าหมาย · เริ่ม · ปล่อย · แสงพุ่ง · จุดเรืองแสง (ชื่อไฟล์เดิม ชื่อระบบใหม่ตาม CONTEXT.md)
@@ -4134,6 +4608,7 @@ BODY.build = (scene) => {
     });
   }
   SENSE.spawnResidents();   // คนที่อยู่ในบ้าน (ชาวบ้านในโรงขนมปัง พ่อมดบนหอคอย) — ต้องเพิ่มก่อนสร้าง crowd
+  JOBS.spawn();             // คน/สัตว์ของงานรับจ้างบทที่ 2 (ช่างตัดเสื้อ นายพราน พ่อค้า ยามตลาด เออร์มีน กิ้งก่า ...) — 71-jobs.js · ก่อนสร้าง crowd เช่นกัน
   const byRig = {};
   for (const e of BODY.list) (byRig[e.kind.rig] || (byRig[e.kind.rig] = [])).push(e);
   for (const id in byRig) {
@@ -4222,7 +4697,8 @@ BODY.update = (dt) => {
     if (e.state === 'gone') { if (e.away) continue; e.goneT += dt; if (e.goneT > BODY.respawnAfter) BODY.respawn(e); continue; }   // e.away = ไม่อยู่ในฉากตามเนื้อเรื่อง (STORY) ไม่เกิดใหม่เอง
     const K = e.kind;
     let inp = BODY.idle;
-    if (e.state === 'ground' && (K.ai === 'wander' || K.sense)) inp = (K.sense && SENSE.drive(e)) || (K.ai === 'wander' ? BODY.wander(e, dt) : (K.ai === 'patrol' ? BODY.patrol(e, dt) : BODY.idle));   // ความสงสัยสั่งการเดินก่อน (61-sense.js)
+    if (e.drive && e.state === 'ground') inp = e.drive(e, dt) || BODY.idle;   // ถูกเรื่องสั่งเดิน (เช่นนายพรานไปที่ประตู) — ข้ามพฤติกรรมปกติ
+    else if (e.state === 'ground' && (K.ai === 'wander' || K.sense)) inp = (K.sense && SENSE.drive(e)) || (K.ai === 'wander' ? BODY.wander(e, dt) : (K.ai === 'patrol' ? BODY.patrol(e, dt) : BODY.idle));   // ความสงสัยสั่งการเดินก่อน (61-sense.js)
     if (!e.rest || inp !== BODY.idle) BODIES.modes[K.mode](e, inp, dt);
     if (e.y < e.isl.baseH - K.fallDepth) { e.state = 'gone'; e.goneT = 0; e.vx = e.vy = e.vz = 0; }   // ตกขอบเกาะจริงแล้ว: หายไปครู่หนึ่ง แล้วกลับจุดเกิด
   }
@@ -4231,7 +4707,11 @@ BODY.update = (dt) => {
 // ---- ทุกเฟรม: เขียนลง InstancedMesh ----
 BODY.render = (dt) => {
   const pr = PLAYER.ctl, t = performance.now() / 1000;
-  for (const id in BODY.crowds) { const cw = BODY.crowds[id]; RIG.ghostSet(cw, pr && pr.kind.rig === id ? pr.ci : -1); }
+  const cb = PLAYER.camBody();
+  for (const id in BODY.crowds) {
+    const cw = BODY.crowds[id]; RIG.ghostSet(cw, pr && pr.kind.rig === id ? pr.ci : -1);
+    if (cw.def.isle) { const il = WORLD.byId[cw.def.isle], v = Math.hypot(cb.x - il.x, cb.z - il.z) < il.radius + 45; if (v !== cw.vis) { cw.vis = v; for (const pt of cw.parts) pt.im.visible = v; } }   // rig ประจำเกาะ: ซ่อนทั้งชุดเมื่อไกลเกาะนั้น (ประหยัด draw call)
+  }
   for (const e of BODY.list) {
     const cw = BODY.crowds[e.kind.rig], K = e.kind;
     e.hid = false;
@@ -4279,6 +4759,9 @@ const SENSE = {
 };
 const _snSee = ['small', 'seethru'];   // ลำแสงมองผ่านรูหนูได้ (ช่องเล็กที่ฐานผนังไม่ใช่ผนัง) แต่ไม่ผ่านผนัง/ประตู/หน้าต่างที่ปิด/เฟอร์นิเจอร์
 
+// เขตหวง (นอกอาคาร): SENSE.zones = [{ x0, x1, z0, z1 }] พิกัดโลก · ใครอยู่ในเขต = น่าสงสัยเท่า K.threat.indoor (เติมทุกครั้งที่ยามเห็น) · เพิ่มเขตจากข้อมูลของเกาะ (37-desertvillage.js)
+SENSE.zones = [];
+SENSE.zoneAt = (B) => { for (const z of SENSE.zones) if (B.x > z.x0 && B.x < z.x1 && B.z > z.z0 && B.z < z.z1) return z; return null; };
 SENSE.cy = (B) => B.y + (B.kind.top ? B.kind.top * B.kind.scale * (B.s || 1) * 0.5 : (B.kind.colH || 0.5) * 0.7);
 // กลางคืนระยะมองสั้นลง · ในหอคอย: ใช้ค่าแสงตรงตัวผู้ถูกมองแทน (ในเงา = ระยะมองสั้นลง · ในวงแสง = เต็ม) ไม่ขึ้นกับกลางวัน/กลางคืน
 SENSE.range = (e) => { const S = e.kind.sense, c = SENSE.c, lt = c ? c.light : null; return lt === null || lt === undefined ? S.range * U.lerp(1, S.night, DN.night) : S.range * U.lerp(TOWER.cfg.shadowRange, 1, lt); };
@@ -4287,7 +4770,9 @@ SENSE.range = (e) => { const S = e.kind.sense, c = SENSE.c, lt = c ? c.light : n
 SENSE.ctx = () => {
   const B = PLAYER.ctl || PLAYER, K = B.kind, h = HOUSE.insideAt(B.x, B.y, B.z), th = K.threat || { indoor: 0, outdoor: 0 };
   const own = !!h && h.plan.owner === 'hero', sp = Math.hypot(B.vx, B.vz), flying = K.mode === 'fly' && B.state === 'fly';
-  return { B, K, house: h, light: TOWER.lightFor(B), indoors: !!h && !own, own, threat: own ? 0 : (h ? th.indoor : th.outdoor), moving: sp > 0.6 || flying, flying, cy: SENSE.cy(B) };
+  const pub = !!h && !!h.plan.open;   // ร้านที่เปิดต้อนรับลูกค้า (ร้านขนมปังหลังบทที่ 1): เข้าไปไม่น่าสงสัย
+  const zone = !h && SENSE.zoneAt(B);   // เขตหวงนอกอาคาร (หลังแผงตลาดทะเลทราย): น่าสงสัยเท่าอยู่ในบ้านคนอื่น
+  return { B, K, house: h, light: TOWER.lightFor(B), indoors: !!h && !own && !pub, own, zone, threat: own || pub ? 0 : (h || zone ? th.indoor : th.outdoor), moving: sp > 0.6 || flying, flying, cy: SENSE.cy(B) };
 };
 
 // คนที่อยู่ในบ้าน (แปลนบ้านมี resident) — เรียกจาก BODY.build ก่อนสร้าง crowd
@@ -4435,6 +4920,9 @@ SENSE.catch = (e, ctx) => {
   else if (h && h.plan.tower) {   // ถูกจับในหอคอย: ไม่ไล่ออกนอกหอ กลับไปเริ่มที่ชั้น 5 (จุดบันทึกของหอคอย)
     const sp = TOWER.cfg.spawn, h5 = HOUSE.byId['tower' + TOWER.K];
     PLAYER.setPos(h5.x + sp[0], h5.base + HOUSE.FY, h5.z + sp[1]); P.state = 'ground'; P.yaw = 0; msg = 'ถูกจับ — ถูกพากลับขึ้นไปที่ห้องใต้หลังคา';
+  } else if (e.kind.escort) {   // ยามตลาด: พาออกนอกตลาด (ไม่ทำร้าย ของในกระเป๋าไม่หล่น)
+    const [x, z] = e.kind.escort(), g = WORLD.groundAt(x, z) ?? B.y;
+    PLAYER.setPos(x, g, z); P.state = 'ground'; P.yaw = Math.atan2(x - e.x, z - e.z); msg = 'ถูกยามจับได้ — ถูกพาออกนอกตลาด';
   } else if (h && !ctx.own) {
     const [x, z] = SENSE.expelPoint(h), g = WORLD.groundAt(x, z) ?? B.y;
     PLAYER.setPos(x, g, z); P.state = 'ground'; P.yaw = Math.atan2(x - h.x, z - h.z); msg = 'ถูกจับ — ถูกไล่ออกนอกบ้าน';
@@ -4443,7 +4931,7 @@ SENSE.catch = (e, ctx) => {
     if (g !== null) { P.x = nx; P.z = nz; P.y = g; P.vx = P.vy = P.vz = 0; if (P.kind.mode === 'fly') P.state = 'ground'; }
     msg = 'ถูกจับ — ถูกผลักออกไป';
   }
-  const it = BAG.dropLast(); if (it) msg += ' · ' + it.def.name + 'หล่นคืนที่เดิม';
+  const it = e.kind.escort ? null : BAG.dropLast(); if (it) msg += ' · ' + it.def.name + 'หล่นคืนที่เดิม';
   if (h && !ctx.own) { SENSE.waryHouse(h); if (!h.plan.noWary) msg += ' · บ้านหลังนี้ระวังตัว'; }
   if (h && h.plan.tower) TOWER.onCaught();   // รีเซ็ตของเฝ้าทุกตัวกลับจุดเริ่ม
   UI.toast(msg, 4200);
@@ -4554,6 +5042,7 @@ PLAYER._respawn = (dt) => {
     const g = WORLD.groundAt(x, z) ?? s.baseH;
     PLAYER.setPos(x, g + (P.form === 'raven' ? (K.respawnAlt || 20) : 0.05), z);
     P.energy = Math.max(P.energy, K.respawnEnergy || 45); rs.ph = 'in'; rs.t = 0; rs.n = (rs.n || 0) + 1; P.respawns = (P.respawns || 0) + 1;
+    UI.toast(s.rock ? 'ตกลงไปในทะเลเมฆ — ตื่นขึ้นที่หินลอยที่พักล่าสุด ของในกระเป๋าไม่หาย' : 'ตกลงไปในทะเลเมฆ — ตื่นขึ้นที่เกาะล่าสุด ของในกระเป๋าไม่หาย', 4200);
   } else {
     P.fade = Math.max(0, 1 - rs.t / 0.9);
     if (rs.t >= 0.9) { P.rs = null; P.fade = 0; }
@@ -4709,6 +5198,9 @@ BAG.kinds = {
     g.limb([-0.1, 0.06, 0], [0.14, 0.06, 0], 0.035, 0.035, 5, _bgC('#6a7080')); g.limb([-0.17, 0.06, 0], [-0.13, 0.06, 0], 0.11, 0.11, 8, _bgC('#8a93a4')); g.box([0.1, 0.03, 0], 0.03, 0.08, 0.03, _bgC('#6a7080')); g.box([0.14, 0.03, 0], 0.03, 0.06, 0.03, _bgC('#6a7080')); } },
   stonekey: { name: 'กุญแจหินเรืองแสง', w: 1, h: 1, by: ['hands', 'beak', 'paws'], col: '#7fd8ff', draw: (g) => {
     g.limb([-0.1, 0.1, 0], [0.16, 0.1, 0], 0.045, 0.045, 5, _bgC('#7fd8ff')); g.ball([-0.15, 0.1, 0], 0.12, 0, _bgC('#bff0ff'), { cv: 0.05 }); g.box([0.12, 0.06, 0], 0.04, 0.1, 0.04, _bgC('#5fb8e0')); g.box([0.17, 0.06, 0], 0.04, 0.08, 0.04, _bgC('#5fb8e0')); } },
+  // ของงานรับจ้างบทที่ 2: ได้จากการคุย (BAG.give) ไม่มีของในโลก · ถูกจับแล้วไม่หล่นคืน
+  furbundle: { name: 'มัดขนสัตว์', w: 2, h: 1, by: ['hands'], col: '#d8d2c4', draw: (g) => { g.ball([0, 0.14, 0], 0.26, 0, _bgC('#d8d2c4'), { sy: 0.55, jit: 0.1, seed: 12 }); g.limb([-0.3, 0.14, 0], [0.3, 0.14, 0], 0.03, 0.03, 4, _bgC('#6a4a2a')); } },
+  spicepack: { name: 'ห่อเครื่องเทศ', w: 1, h: 1, by: ['hands'], col: '#c9803c', draw: (g) => { g.box([0, 0.12, 0], 0.3, 0.24, 0.24, _bgC('#c9803c')); g.box([0, 0.25, 0], 0.08, 0.04, 0.26, _bgC('#6a4a2a')); } },
   pie: { name: 'พายอุ่น', w: 1, h: 1, by: ['hands', 'beak'], col: '#d9a35c', draw: (g) => {
     g.limb([0, 0.02, 0], [0, 0.16, 0], 0.27, 0.25, 10, _bgC('#d9a35c')); g.limb([0, 0.16, 0], [0, 0.2, 0], 0.2, 0.2, 10, _bgC('#a8442e')); } },
 };
@@ -4740,13 +5232,16 @@ BAG.build = (scene) => {
     if (D.by.indexOf('beak') < 0) INTERACT.add({ id: 'item.' + it.uid + '.big', x: it.x, y: it.y, z: it.z, r: 1.4, dy: 1.6, tags: ['beak'], inHouse: it.house || undefined, can: () => !it.taken, hint: true,
       text: () => D.name + ' — ใหญ่เกินจะคาบ', run: () => UI.toast(D.name + ' — เรเวนคาบไม่ไหว ต้องใช้มือ (ร่างคน) ถึงจะหยิบได้', 3400) });
   }
+  for (const [uid, kind] of [['job.fur', 'furbundle'], ['job.spice', 'spicepack']]) {   // ของที่ได้จากการคุย: เป็น "ของในโลกเสมือน" (virtual) เพื่อใช้ระบบเซฟ/ใช้หมดเดิม · ไม่มีรูปในโลก ไม่มีจุดหยิบ
+    const D = BAG.kinds[kind], it = { uid, kind, def: D, x: 0, y: 0, z: 0, house: null, taken: false, trigger: null, virtual: true }; BAG.world.push(it); BAG.byUid[uid] = it;
+  }
   BAG.load(); BAG.remesh(); BAG.buildUI();
 };
 
 // สร้าง mesh ของของในโลก (ที่ยังไม่ถูกเก็บ) ใหม่เป็นก้อนเดียว · เรียกเมื่อมีของถูกเก็บ/หล่นคืน
 BAG.remesh = () => {
   const g = new GB(); let n = 0;
-  for (const it of BAG.world) if (!it.taken) { it.def.draw(new _BagGB(g, [it.x, it.y, it.z])); n++; }
+  for (const it of BAG.world) if (!it.taken && !it.virtual) { it.def.draw(new _BagGB(g, [it.x, it.y, it.z])); n++; }
   if (BAG.mesh) { BAG.scene.remove(BAG.mesh); BAG.mesh.geometry.dispose(); BAG.mesh = null; }
   if (n) { BAG.mesh = new THREE.Mesh(g.build(), GFX.mat); BAG.mesh.castShadow = false; BAG.mesh.frustumCulled = false; BAG.scene.add(BAG.mesh); }
 };
@@ -4785,10 +5280,18 @@ BAG.pick = (it) => {
   if (it.trigger === 'wizard') WIZ.begin();
   return true;
 };
+// ได้ของจากการคุย (ไม่จำกัดร่าง · ADR 0003): คืน true ถ้าใส่ได้ · เต็ม = false (ผู้เรียกต้องเช็ก BAG.fit ก่อน)
+BAG.give = (uid) => {
+  const it = BAG.byUid[uid]; if (!it || it.taken) return false;
+  const spot = BAG.fit(it.def.w, it.def.h); if (!spot) return false;
+  it.taken = true; BAG.items.push({ uid, kind: it.kind, def: it.def, c: spot.c, r: spot.r, seq: ++BAG.seq }); BAG.save(); BAG.refresh(true);
+  UI.toast('ได้' + it.def.name + ' — เก็บเข้ากระเป๋าเวทมนตร์', 3000); return true;
+};
 // ถูกจับ: ของชิ้นล่าสุดที่เก็บหล่นคืนที่เดิม (ที่ที่หยิบมา)
 BAG.dropLast = () => {
   if (!BAG.items.length) return null;
-  let k = 0; BAG.items.forEach((it, i) => { if (it.seq > BAG.items[k].seq) k = i; });
+  let k = -1; BAG.items.forEach((it, i) => { const w0 = BAG.byUid[it.uid]; if (w0 && w0.virtual) return; if (k < 0 || it.seq > BAG.items[k].seq) k = i; });   // ของงานรับจ้าง (virtual) ไม่หล่นคืน
+  if (k < 0) return null;
   const [rm] = BAG.items.splice(k, 1), w = BAG.byUid[rm.uid];
   if (w) { w.taken = false; BAG.remesh(); }
   BAG.save(); BAG.refresh(true); return rm;
@@ -4843,7 +5346,7 @@ BAG.update = () => {
 BAG.drawGlow = (t) => {
   const c = SENSE.c; if (!c) return;
   for (const it of BAG.world) {
-    if (it.taken || Math.hypot(it.x - c.B.x, it.z - c.B.z) > 14 || Math.abs(it.y - c.B.y) > 8) continue;
+    if (it.virtual || it.taken || Math.hypot(it.x - c.B.x, it.z - c.B.z) > 14 || Math.abs(it.y - c.B.y) > 8) continue;
     if (it.house && (!c.house || c.house.id !== it.house)) continue;
     GLOW.add(it.x, it.y + 0.5 + 0.08 * Math.sin(t * 3 + it.x), it.z, 0.8, 0, 0.85);
   }
@@ -4952,7 +5455,9 @@ const GOALS = {
   list: [
     { id: 'food', text: 'แม่หิว — หาอะไรกินมาให้แม่', ok: () => STORY.s.gotFood },
     { id: 'bring', text: 'เอาขนมปังกลับไปให้แม่', ok: () => STORY.s.handed },
-    { id: 'job', text: 'หางานรับจ้างในเมือง', ok: () => false },   // งานรับจ้างจริง = งานย่อย 2 (ยังไม่ทำ)
+    { id: 'job', text: 'หางานรับจ้างในเมือง', ok: () => STORY.s.tailor > 0 || STORY.s.spice > 0 },
+    { id: 'jobs', text: () => JOBS.goalText(), ok: () => STORY.s.ch >= 3 },   // ข้อความตามสถานะงาน (71-jobs.js) · บอกแค่เป้าหมายกว้างๆ ไม่บอกวิธี
+    { id: 'home', text: 'กลับบ้านไปหาแม่', ok: () => false },   // บทที่ 3 (งานย่อย 3) ยังไม่ทำ — ตั้งแค่ไกด์
   ],
   done: [], el: null, open: false, _k: '',
 };
@@ -4975,12 +5480,13 @@ GOALS.init = () => {
   el.addEventListener('pointerdown', (e) => { if (!UI.touch) return; e.preventDefault(); e.stopPropagation(); GOALS.open = !GOALS.open; GOALS.render(); });
   GOALS.render();
 };
+GOALS.tx = (q) => (typeof q.text === 'function' ? q.text() : q.text);
 GOALS.cur = () => { const i = GOALS.done.indexOf(false); return i < 0 ? GOALS.list.length - 1 : i; };   // ข้อที่กำลังทำ (ครบหมดแล้ว = ข้อสุดท้าย)
 GOALS.render = () => {
-  const cur = GOALS.cur(), all = GOALS.done.every((v) => v), key = GOALS.done.join() + '|' + GOALS.open + '|' + UI.touch + '|' + WIZ.lock;
+  const cur = GOALS.cur(), all = GOALS.done.every((v) => v), key = GOALS.done.join() + '|' + GOALS.open + '|' + UI.touch + '|' + WIZ.lock + '|' + GOALS.list.map(GOALS.tx).join('/');
   if (key === GOALS._k) return; GOALS._k = key;
   GOALS.el.style.display = WIZ.lock ? 'none' : 'block'; GOALS.el.classList.toggle('c', !GOALS.open);
-  GOALS.el.innerHTML = '<h6>เป้าหมาย' + (UI.touch ? (GOALS.open ? ' ▴' : ' ▾') : '') + '</h6>' + GOALS.list.map((q, i) => (i <= cur || all || GOALS.done[i] ? '<div class="g' + (GOALS.done[i] ? ' d' : '') + (i === cur ? ' cur' : '') + '"><i></i><span>' + q.text + '</span></div>' : '')).join('');
+  GOALS.el.innerHTML = '<h6>เป้าหมาย' + (UI.touch ? (GOALS.open ? ' ▴' : ' ▾') : '') + '</h6>' + GOALS.list.map((q, i) => (i <= cur || all || GOALS.done[i] ? '<div class="g' + (GOALS.done[i] ? ' d' : '') + (i === cur ? ' cur' : '') + '"><i></i><span>' + GOALS.tx(q) + '</span></div>' : '')).join('');
 };
 GOALS.update = () => {
   for (let i = 0; i < GOALS.list.length; i++) if (!GOALS.done[i] && GOALS.list[i].ok()) { GOALS.done[i] = true; SAVE.write({ goals2: GOALS.done.slice() }); }
@@ -4989,13 +5495,13 @@ GOALS.update = () => {
 
 /* ---- 67-story.js ---- */
 // 67-story.js — STORY: สถานะเรื่อง (ข้อมูลเดียว เซฟใน SAVE.story) · บทที่ 1 "แม่หิว" → บทที่ 2 "หางานรับจ้าง" (ADR 0003)
-// STORY.s = { ch: 1|2 (บท), opened (คุยเปิดเกมแล้ว), gotFood (เคยได้ของกินแล้ว — ติ๊กไม่ถอย), handed (ให้แม่แล้ว) } · งานย่อย 2–3 เพิ่มฟิลด์/บทต่อที่นี่
+// STORY.s = { ch: 1|2|3 (บท · 3 = ส่งงานครบ 2 งานแล้ว ไกด์ "กลับบ้านไปหาแม่" · เนื้อหาบท 3 ยังไม่ทำ), opened (คุยเปิดเกมแล้ว), gotFood (เคยได้ของกินแล้ว — ติ๊กไม่ถอย), handed (ให้แม่แล้ว) } · งานย่อย 2–3 เพิ่มฟิลด์/บทต่อที่นี่
 // เซฟเก่า (ไม่มี SAVE.story): เริ่มบทที่ 1 · ของที่อยู่ในกระเป๋าแล้วนับว่า "ได้ของกินแล้ว" ทันที · ไม่ลบของผู้เล่น
 // ผูกกับ: GOALS.list (66-goals.js อ่านจาก STORY.s) · TALK (68-talk.js บทพูดเปลี่ยนตามสถานะ) · TUT (69-tutor.js บทสอนตามเหตุการณ์)
 // บทที่ 1 "ร้านไม่มีคน": คนทำขนมปังออกไปตลาด (e.away = true, state 'gone' — ทุกระบบที่ข้ามร่างที่ gone ข้ามเขาเอง) จนฟินน์ได้ของกิน แล้วกลับมาเดินตามรอบเดิม
 //   (กลับเมื่อฟินน์ไม่ได้อยู่ในร้านแล้วเท่านั้น กันเขาโผล่ใส่หน้า)
 const STORY = {
-  s: { ch: 1, opened: false, gotFood: false, handed: false }, t: 0, gave: '', e: null, legacy: false,
+  s: { ch: 1, opened: false, gotFood: false, handed: false, tailor: 0, spice: 0, trapper: 0 }, t: 0,   // tailor/spice: 0 ยังไม่รับงาน · 1 รับแล้ว · 2 ได้ของแล้ว · 3 ส่งแล้ว · trapper: 1 = ขุดหิมะเปิดกระท่อมแล้ว (71-jobs.js) gave: '', e: null, legacy: false,
   foods: ['bread', 'loaf', 'cheese', 'sausage', 'pie'],   // ของที่แม่รับได้ (ขนมปังก่อน)
 };
 STORY.init = () => {
@@ -5058,7 +5564,7 @@ STORY.drawGlow = (t) => {
 // คนใหม่ที่คุยได้ = เพิ่ม TALK.people[id] = { kind: ชนิดร่างของคนนั้น, name, pick } + บทใน TALK.data (ไม่ต้องแตะตรรกะ)
 const TALK = { on: false, id: null, key: null, lines: [], i: 0, chars: 0, cps: 42, el: null, byKey: {}, ran: -1 };
 TALK.names = { m: 'มาร์ธา', f: 'ฟินน์', t: 'ฟินน์ · คิดในใจ' };   // t = ฟินน์คิดในใจ (กล่องสีน้ำเงินขอบประ ตัวเอียง)
-TALK.cols = { m: '#ffd9a8', f: '#a8d4ff', t: '#bcd0ff' };
+TALK.cols = { m: '#ffd9a8', f: '#a8d4ff', t: '#bcd0ff', x: '#ffe2a0' };   // x = คนที่คุยด้วยตอนนี้ (ชื่อจาก TALK.people[คนนั้น].name) — ใช้กับคนทุกคนที่ไม่ใช่แม่
 const _tkN = () => STORY.foodName();
 TALK.data = {
   'm.open': [
@@ -5084,6 +5590,11 @@ TALK.data = {
     ['m', 'ฟินน์ ลองไปหางานรับจ้างในเมืองดูนะลูก ใครจ้างอะไรก็ถามไว้ แม่จะรออยู่ที่บ้าน'],
     ['f', 'ครับ ผมจะไปดู'],
   ],
+  'm.ch3': [   // ส่งงานครบ 2 งานแล้ว (เนื้อหาบท 3 ยังไม่ทำ — แค่รับตอนกลับถึงบ้าน)
+    ['m', 'กลับมาแล้วหรือลูก ตัวเปื้อนหิมะ เปื้อนทราย… ไปไกลมาใช่ไหม'],
+    ['f', 'ผมได้เหรียญมาแล้วครับแม่ เดี๋ยวคืนนี้มีของให้กินอุ่นๆ'],
+    ['m', 'แม่ไม่อยากให้ลูกเสี่ยง แต่ก็ขอบใจนะ มานั่งผิงไฟก่อน'],
+  ],
   'm.ch2': [
     ['m', 'ไปหางานรับจ้างในเมืองดูนะลูก ใครจ้างอะไรก็ถามไว้ แม่รออยู่ที่นี่'],
     ['f', 'ครับแม่'],
@@ -5091,7 +5602,7 @@ TALK.data = {
 };
 TALK.acts = { opened: () => STORY.set('opened'), give: () => STORY.handIn() };
 TALK.people = {
-  mother: { kind: 'mother', name: 'มาร์ธา', house: 'hut', pick: () => (!STORY.s.opened ? 'm.open' : STORY.s.ch >= 2 ? 'm.ch2' : STORY.food() && !STORY.s.handed ? 'm.give' : 'm.wait') },
+  mother: { kind: 'mother', name: 'มาร์ธา', house: 'hut', pick: () => (!STORY.s.opened ? 'm.open' : STORY.s.ch >= 3 ? 'm.ch3' : STORY.s.ch >= 2 ? 'm.ch2' : STORY.food() && !STORY.s.handed ? 'm.give' : 'm.wait') },
 };
 
 TALK.CSS = `
@@ -5115,9 +5626,9 @@ TALK.init = () => {
     else if (e.code === 'Escape') TALK.end(true);
   });
   for (const key in TALK.people) {   // ลงทะเบียนจุดคุยของแต่ละคน (คนนิ่ง: ตำแหน่งตอนเริ่มโลก · ถ้าคนเดินได้ ต้องอัปเดต o.x/o.z เอง)
-    const P = TALK.people[key], e = BODY.list.find((b) => b.kindId === P.kind); if (!e) continue;
+    const P = TALK.people[key], e = P.bid ? BODY.byId[P.bid] : BODY.list.find((b) => b.kindId === P.kind); if (!e) continue;   // bid = id ร่างตรงๆ (ชนิดเดียวกันหลายคน)
     P.body = e; TALK.byKey[key] = P;
-    INTERACT.add({ id: 'talk.' + key, x: e.x, y: e.y + 0.4, z: e.z, r: 2.4, dy: 1.6, tags: ['talks'], inHouse: P.house, hint: true, can: () => !TALK.on && !WIZ.lock && e.state !== 'gone',
+    P.o = INTERACT.add({ id: 'talk.' + key, x: e.x, y: e.y + 0.4, z: e.z, r: 2.4, dy: 1.6, tags: ['talks'], inHouse: P.house, hint: true, can: () => !TALK.on && !WIZ.lock && e.state !== 'gone' && (!P.can || P.can()),
       text: () => 'คุยกับ' + P.name, run: () => TALK.start(key) });
   }
 };
@@ -5134,7 +5645,7 @@ TALK.show = () => {
   const L = TALK.lines[TALK.i], E = TALK.el; TALK.chars = 0;
   if (TALK.ran < TALK.i) { TALK.ran = TALK.i; if (L[2]) TALK.acts[L[2]](); }   // action ทำตอนบรรทัดขึ้น (ก่อนอ่านข้อความ เพื่อให้ข้อความอ้างผลได้)
   E.box.classList.toggle('tht', L[0] === 't');
-  E.name.textContent = TALK.names[L[0]]; E.name.style.color = TALK.cols[L[0]];
+  E.name.textContent = L[0] === 'x' ? TALK.byKey[TALK.key].name : TALK.names[L[0]]; E.name.style.color = TALK.cols[L[0]];
   E.hint.textContent = (TALK.i + 1) + '/' + TALK.lines.length + ' · ' + (UI.touch ? 'แตะ = ต่อ' : 'คลิก / Space / F = ต่อ · Esc = ข้าม');
   E.txt.textContent = '';
 };
@@ -5151,6 +5662,7 @@ TALK.end = (skip) => {
   TALK.on = false; TALK.el.root.classList.remove('on'); INPUT.pressed.use = false;
 };
 TALK.update = (dt) => {
+  for (const k in TALK.byKey) { const P = TALK.byKey[k]; if (P.follow) { P.o.x = P.body.x; P.o.y = P.body.y + 0.4; P.o.z = P.body.z; } }   // คนที่เดินได้: จุดคุยตามตัว
   if (!TALK.on) return;
   if (INPUT.take('use')) { TALK.advance(); if (!TALK.on) return; }
   const t = TALK.text(TALK.lines[TALK.i]); TALK.chars = Math.min(t.length, TALK.chars + TALK.cps * dt);
@@ -5196,6 +5708,9 @@ TUT.list = [
   { id: 'fly', when: () => PLAYER.form === 'raven' && !PLAYER.ctl,   // เป็นเรเวนครั้งแรก
     lines: [['tip', () => _tuTouch('Space = กระพือบินขึ้น · Shift = ร่อนลง', 'ปุ่ม ⤒ = กระพือบินขึ้น · ปุ่ม ⤓ = ร่อนลง') + ' · บินเปลืองพลังเวท (แถบบนจอ) ลงยืนบนพื้นเพื่อฟื้น']],
     ok: () => PLAYER.state === 'fly' && TUT.t > 6, min: 6, max: 14 },
+  { id: 'skyfly', when: () => PLAYER.form === 'raven' && PLAYER.state === 'fly' && !PLAYER.ctl && !PLAYER.over && !!PLAYER.isl && PLAYER.isl.id === 'home',   // บินพ้นขอบเกาะเมืองครั้งแรก (M5.6 งานย่อย 2)
+    lines: [['thought', 'พลังเวทลดลงเรื่อยๆ ตอนบิน… บินรวดเดียวข้ามไปทั้งทางคงไม่ไหว'], ['tip', () => 'พลังเวทลดตอนบิน — ลงพักบนหินลอยแล้วแปลงเป็นคนเพื่อฟื้น (' + _tuTouch('กด R', 'ปุ่มแปลงร่าง') + ') · เสาอนุภาคลอยขึ้นคือลมร้อน บินผ่านแล้วถูกยกขึ้นโดยไม่เสียพลัง']],
+    ok: () => !!PLAYER.over && !!PLAYER.over.rock, min: 7, max: 20 },
   { id: 'bag', when: () => STORY.s.gotFood && !STORY.s.handed && !!STORY.food(),   // ได้ของกินแล้ว
     lines: [['tip', () => 'ของที่ได้เก็บเข้ากระเป๋าเวทมนตร์แล้ว — ' + _tuTouch('กด Tab หรือ I', 'แตะปุ่มถุงมุมขวาบน') + ' เพื่อเปิดดู']],
     ok: () => BAG.open, min: 4, max: 16 },
@@ -5457,6 +5972,198 @@ INTRO.finish = (skipped) => {
   }
   SAVE.write({ introSeen: 1 }); PLAYER.save();
 };
+
+/* ---- 71-jobs.js ---- */
+// 71-jobs.js — JOBS: งานรับจ้าง 2 งานของบทที่ 2 (M5.6 งานย่อย 2) · ช่างตัดเสื้อ (ขนสัตว์จากนายพรานเกาะหิมะ) · คนทำขนมปัง (เครื่องเทศจากพ่อค้าเกาะทะเลทราย)
+// สถานะอยู่ใน STORY.s (67-story.js): tailor / spice = 0 ยังไม่รับ · 1 รับแล้ว · 2 ได้ของแล้ว (อยู่ในกระเป๋า) · 3 ส่งแล้ว · trapper = 1 นายพรานขุดหิมะเปิดกระท่อมแล้ว · ส่งครบ 2 งาน → STORY.s.ch = 3
+// ไฟล์นี้: บทพูด (TALK.data/people/acts) · เสกคนและสัตว์ของบท (JOBS.spawn เรียกจาก BODY.build) · ลำดับเหตุการณ์กระดิ่ง→นายพรานขุดหิมะ · ปลดล็อกร้านขนมปังหลังจบบทที่ 1 · ไกด์ · บทสอน
+// ปัญหาบนเกาะ "ยังไม่เปิดจนกว่ารับงาน": กระดิ่งดึงได้เมื่อ tailor ≥ 1 · พ่อค้าให้ของเมื่อ spice = 1 (ก่อนนั้นคุยทั่วไปได้)
+const JOBS = { e: {}, T: { stage: 0, t: 0 }, cfg: { dig: SNOWV.cfg.digSec } };
+const _jbTouch = (a, b) => (UI.touch ? b : a);
+
+// ---------------- เสกคน/สัตว์ ----------------
+JOBS.spawn = () => {
+  const rng = U.rng(WORLD.seed * 97 + 11), home = WORLD.byId.home, snow = WORLD.byId.snow, des = WORLD.byId.desert, E = JOBS.e;
+  const add = (isl, kind, tint, x, z, idx, yaw) => { const e = BODY.add(isl, { kind, tint }, x, z, rng, idx); if (yaw !== undefined) { e.yaw = yaw; e.spawn.yaw = yaw; } return e; };
+  E.tailor = add(home, 'tailor', { shirt: '#7a5aa8', pants: '#4a4238', skin: '#f0cfaa' }, home.x - 8.2, home.z + 4.9, 0, 0);
+  const V = snow.village, h = SNOWV.h;
+  E.trapper = add(snow, 'trapper', { coat: '#6a5238' }, h.x + 0.4, h.z + 1.5, 0, 0); E.trapper.y = h.base + HOUSE.FY; E.trapper.house = 'trapper'; E.trapper.spawn.y = E.trapper.y;
+  add(snow, 'furfolk', { coat: '#6a5a48' }, V.x + 0.8, V.z + 1.2, 9, 3.9);
+  E.ermine = [add(snow, 'ermine', { fur: '#ffffff' }, h.x + 3.0, h.z + 3.6, 0), add(snow, 'ermine', { fur: '#f0ece4' }, V.x + 2.5, V.z + 5.5, 1)];
+  const D = des.village;
+  E.merchant = add(des, 'merchant', { robe: '#6a3f7a' }, D.x + DESV.merchantAt[0], D.z + DESV.merchantAt[1], 0, 0);
+  E.guards = [add(des, 'marketguard', { robe: '#7a2f2a' }, D.x + DESV_PATROL[0][0][0], D.z + DESV_PATROL[0][0][1], 0), add(des, 'marketguard', { robe: '#2f3f7a' }, D.x + DESV_PATROL[1][0][0], D.z + DESV_PATROL[1][0][1], 1)];
+  E.guards.forEach((g, i) => DESV.setPatrol(g, DESV_PATROL[i]));
+  add(des, 'robefolk', { robe: '#b9845a' }, D.x - 3.0, D.z + 5.5, 9, 1.0);
+  E.lizard = [add(des, 'lizard', { skin: '#a8a060' }, D.x - 6.0, D.z + 5.0, 0), add(des, 'lizard', { skin: '#b89a5a' }, D.x + 6.5, D.z + 6.0, 1)];
+};
+
+// ---------------- บทพูด ----------------
+// ผู้พูด 'x' = คนที่คุยด้วย (ชื่อจาก TALK.people[คนนั้น].name) · 'f' ฟินน์ · 't' ฟินน์คิดในใจ · action (ตัวที่ 3) ทำเมื่อบรรทัดนั้นขึ้น
+Object.assign(TALK.data, {
+  'tl.idle': [
+    ['x', 'อ้าว เด็กในเมืองใช่ไหม ฉันเพิ่งย้ายมาเปิดร้านที่นี่ ฤดูนี้หนาวเร็ว เสื้อคลุมขายดีใหญ่ แต่ขนสัตว์ขาดตลาดจนฉันไม่รู้จะเอาที่ไหนมาทำ'],
+    ['f', 'ครับ…'],
+  ],
+  'tl.job': [
+    ['x', 'เด็กหนุ่ม! เธอดูเป็นคนเดินทางเก่งนะ — ฉันกำลังเดือดร้อนอยู่พอดี'],
+    ['x', 'ลูกค้าสั่งเสื้อคลุมขนสัตว์ไว้เยอะ แต่ขนสัตว์ในเมืองหมดเกลี้ยง คนส่งของก็ไม่ยอมมาเพราะหิมะ'],
+    ['x', 'นายพรานบนเกาะหิมะเก็บมัดขนสัตว์ชั้นดีไว้ให้ฉันแล้ว ถ้าเธอไปรับมาให้ ฉันจ่ายเป็นเหรียญเลย'],
+    ['f', 'ผมรับงานนี้ครับ', 'acceptTailor'],
+    ['x', 'ดีมาก! เห็นว่าช่วงนี้หิมะถล่มบนเกาะนั้นหลายแห่ง ไม่รู้นายพรานยังสบายดีไหม ระวังตัวด้วยนะ'],
+  ],
+  'tl.wait': [
+    ['x', 'มัดขนสัตว์ยังไม่มาเหรอ นายพรานอยู่ที่กระท่อมบนเกาะหิมะ ไปรับมาให้ฉันด้วยนะ'],
+    ['f', 'ครับ ผมกำลังไป'],
+  ],
+  'tl.deliver': [
+    ['f', 'ผมได้มัดขนสัตว์มาแล้วครับ ต้องการเลยไหม', 'giveFur'],
+    ['x', 'เยี่ยมเลย! ขนหนานุ่มแบบนี้แหละที่หาไม่ได้ในเมือง นี่ค่าจ้างของเธอ เหรียญห้าเหรียญ'],
+    ['f', 'ขอบคุณครับ'],
+    ['x', 'ถ้าได้ไปเกาะนั้นอีก ฝากขอบใจนายพรานด้วยนะ'],
+  ],
+  'tl.done': [['x', 'ขอบใจอีกครั้งนะที่ช่วยไปรับของมาให้ ถ้ามีงานอีกฉันจะบอก']],
+  'bk.job': [
+    ['x', 'อ้าว เด็กหนุ่มนี่เอง ร้านฉันเปิดแล้วนะ จะซื้อขนมปังหรือเปล่า'],
+    ['x', 'เมื่อวานฉันโดนขโมย ขนมปังหายไปก้อนหนึ่ง ทั้งที่ประตูหน้าต่างปิดสนิท พอกลับมาก็เห็นช่องระบายควันบนผนังเปิดค้างอยู่ ประหลาดจริงๆ'],
+    ['t', 'ข้าได้แต่ยิ้มแห้งๆ… รู้สึกผิดจนไม่กล้าสบตาเขา'],
+    ['f', 'อ่า… คงเป็นหนูมั้งครับ'],
+    ['x', 'หนูที่ปีนสูงขนาดนั้นเนี่ยนะ ช่างเถอะ ฉันมีเรื่องอยากให้ช่วยมากกว่า'],
+    ['x', 'เครื่องเทศในร้านฉันใกล้หมดแล้ว ในเมืองไม่มีเกรดที่ฉันใช้ พ่อค้าเครื่องเทศบนเกาะทะเลทรายมีของดี ถ้าเธอไปรับห่อเครื่องเทศมาให้ ฉันจ่ายเป็นเหรียญ'],
+    ['f', 'ผมรับงานนี้ครับ', 'acceptSpice'],
+    ['x', 'ดี ไปเถอะ แต่ตลาดบนเกาะนั้นยามไม่ชอบให้คนแปลกหน้าเข้าไปหลังร้านนะ ระวังตัวด้วย'],
+  ],
+  'bk.wait': [
+    ['x', 'ห่อเครื่องเทศล่ะ ยังไม่เห็นเลย พ่อค้าอยู่ที่ตลาดบนเกาะทะเลทราย ไปรับมาให้ฉันที'],
+    ['f', 'ครับ ผมกำลังไป'],
+  ],
+  'bk.deliver': [
+    ['f', 'ได้ห่อเครื่องเทศมาแล้วครับ นี่เลย', 'giveSpice'],
+    ['x', 'กลิ่นนี้แหละ! พริก ขมิ้น อบเชย ครบทุกอย่าง เธอไปมาจริงๆ ด้วย นี่ค่าจ้างของเธอ เหรียญหกเหรียญ'],
+    ['f', 'ขอบคุณครับ'],
+    ['t', 'ถ้าเขารู้ว่าข้าคือคนที่เอาขนมปังไป… เขาจะยังยิ้มให้ข้าอยู่ไหม'],
+  ],
+  'bk.done': [['x', 'ขอบใจนะที่ไปเอาของมาให้ ร้านนี้ต้อนรับเธอเสมอ']],
+  'tr.give': [
+    ['x', 'โอ้ ขอบคุณฟ้า… ข้าติดอยู่ข้างในมาสองวัน หิมะถล่มทับประตูแน่นจนดันไม่ออก พอได้ยินเสียงกระดิ่งก็รู้เลยว่ามีใครอยู่ข้างนอก'],
+    ['f', 'ผมมารับมัดขนสัตว์ให้ช่างตัดเสื้อในเมืองครับ'],
+    ['x', 'ช่างตัดเสื้อคนใหม่นั่นเองสินะ ข้าเตรียมไว้ให้แล้ว รอเจ้ามาตั้งแต่ก่อนหิมะลง นี่ มัดนี้เลย', 'getFur'],
+    ['t', 'จะบอกว่าเออร์มีนที่ลอดมาดึงกระดิ่งตัวนั้นคือข้า ก็คงไม่มีใครเชื่อ…'],
+    ['x', 'ฝากขอบใจช่างตัดเสื้อด้วย ข้าจะอยู่ซ่อมหลังคาก่อน หิมะหนักเกินไป'],
+  ],
+  'tr.full': [['x', 'ของที่เจ้าถืออยู่เต็มกระเป๋าแล้วนี่ ทำที่ว่างก่อนค่อยมารับมัดขนสัตว์ไปนะ']],
+  'tr.after': [['x', 'ฝากขอบใจช่างตัดเสื้อด้วย ข้าจะอยู่ซ่อมหลังคาก่อน หิมะหนักเกินไป']],
+  'tr.idle': [['x', 'ข้าไม่ได้ขายของให้ใครนอกจากคนที่ช่างตัดเสื้อฝากมา']],
+  'sp.idle': [
+    ['x', 'เข้ามาหลังร้านได้ยังไงนี่ ที่นี่ห้ามคนแปลกหน้านะ ถ้ายามเห็นเข้า เราเดือดร้อนทั้งคู่'],
+    ['f', 'ขอโทษครับ แค่ผ่านมา'],
+    ['x', 'ถ้ามีธุระกับฉัน ให้มีคนฝากมาก่อน ตอนนี้ไม่มีของอะไรจะให้'],
+  ],
+  'sp.give': [
+    ['f', 'ผมมารับห่อเครื่องเทศแทนคนทำขนมปังในเมืองครับ'],
+    ['x', 'อ๋อ เขาฝากมาจริงสินะ ฉันเตรียมไว้ตั้งแต่เมื่อวาน ห่อแน่นแล้วด้วย นี่เลย', 'getSpice'],
+    ['x', 'รีบไปจากตรงนี้เถอะ ยามเดินวนมาทีไรไม่ชอบให้ใครอยู่หลังแผง'],
+    ['t', 'ต้องออกไปโดยไม่ให้ยามเห็น…'],
+  ],
+  'sp.full': [['x', 'กระเป๋าเจ้าเต็มแล้วนี่ เอาของออกก่อนแล้วค่อยมารับห่อเครื่องเทศ']],
+  'sp.after': [['x', 'ยังอยู่อีกเหรอ รีบไปสิ ยามกำลังจะเดินมาแล้ว']],
+  // ชาวบ้านบนเกาะ (คุยทั่วไป — คำใบ้เรื่องปัญหาขึ้นเมื่อรับงานแล้วเท่านั้น)
+  'sn.a': [['x', 'หนาวนะวันนี้ แต่ปลาแห้งปีนี้ดีมาก ถ้าผ่านมาก็แวะผิงไฟกับเราได้นะ']],
+  'sn.b': [['x', 'ฤดูนี้หิมะลงหนักกว่าทุกปี เนินด้านหลังหมู่บ้านถล่มไปหลายที่แล้ว']],
+  'sn.c': [['x', 'คนจากเกาะเมืองเหรอ ยินดีที่ได้เจอ ที่นี่ไม่ค่อยมีคนมาเยือนหรอก ยิ่งช่วงหิมะหนักแบบนี้']],
+  'sn.hint': [
+    ['x', 'ถ้ามาหานายพรานล่ะก็ เขาไม่ตอบใครเลยตั้งแต่หิมะถล่มทับประตูกระท่อม ข้าเรียกกี่ทีก็เงียบ'],
+    ['x', 'ประตูหน้าเข้าไม่ได้หรอก แต่เออร์มีนที่วิ่งเล่นแถวนี้ตัวเล็กนิดเดียว ยังลอดช่องตามฐานผนังได้สบาย'],
+  ],
+  'ds.a': [['x', 'ตลาดวันนี้คึกคักนะ แต่ระวังหลังแผงไว้ ยามไม่ชอบให้ใครเดินเข้าไป']],
+  'ds.b': [['x', 'ลมร้อนพัดแรงขึ้นทุกปี ข้าชอบตอนบ่ายที่สุด เสื้อคลุมยาวช่วยกันทรายได้ดี']],
+  'ds.c': [['x', 'พวกกิ้งก่าซนนัก วิ่งไปมาในตลาดทั้งวัน ยามไล่ตามจนเมื่อยก็ยังไม่เข็ด']],
+  'ds.hint': [
+    ['x', 'จะหาพ่อค้าเครื่องเทศเหรอ แผงกลางตลาดนั่นแหละ แต่เขาไม่ขายหน้าร้านแล้ว รับเฉพาะคนที่มีคนฝากมา'],
+    ['x', 'ยามเดินตรวจทางหน้าแผงอยู่เรื่อย ถ้าอยากไปหาเขา ต้องหาทางเข้าอีกทาง หรือหาอะไรมาให้ยามไปสนใจทางอื่น'],
+  ],
+});
+const _jbFull = (w, h) => !BAG.fit(w, h);
+Object.assign(TALK.acts, {
+  acceptTailor: () => { STORY.set('tailor', 1); UI.toast('รับงาน: ไปรับมัดขนสัตว์จากนายพรานบนเกาะหิมะ', 3600); },
+  acceptSpice: () => { STORY.set('spice', 1); UI.toast('รับงาน: ไปรับห่อเครื่องเทศจากพ่อค้าบนเกาะทะเลทราย', 3600); },
+  getFur: () => { if (BAG.give('job.fur')) STORY.set('tailor', 2); },
+  getSpice: () => { if (BAG.give('job.spice')) STORY.set('spice', 2); },
+  giveFur: () => { BAG.consume('furbundle'); STORY.set('tailor', 3); UI.toast('ส่งมัดขนสัตว์แล้ว · ได้เหรียญ 5 เหรียญ', 3200); JOBS.checkDone(); },
+  giveSpice: () => { BAG.consume('spicepack'); STORY.set('spice', 3); UI.toast('ส่งห่อเครื่องเทศแล้ว · ได้เหรียญ 6 เหรียญ', 3200); JOBS.checkDone(); },
+});
+JOBS.checkDone = () => { if (STORY.s.tailor === 3 && STORY.s.spice === 3 && STORY.s.ch < 3) { STORY.set('ch', 3); UI.toast('ส่งงานครบสองงานแล้ว — กลับไปหาแม่ที่บ้านเถอะ', 4200); } };
+Object.assign(TALK.people, {
+  tailor: { kind: 'tailor', name: 'ช่างตัดเสื้อ', follow: true, pick: () => (STORY.s.ch < 2 ? 'tl.idle' : ['tl.job', 'tl.wait', 'tl.deliver', 'tl.done'][STORY.s.tailor]) },
+  baker: { kind: 'baker', name: 'คนทำขนมปัง', house: 'baker', follow: true, can: () => STORY.s.ch >= 2, pick: () => ['bk.job', 'bk.wait', 'bk.deliver', 'bk.done'][STORY.s.spice] },
+  trapper: { kind: 'trapper', name: 'นายพราน', follow: true, can: () => STORY.s.trapper === 1, pick: () => (STORY.s.tailor === 1 ? (_jbFull(2, 1) ? 'tr.full' : 'tr.give') : STORY.s.tailor >= 2 ? 'tr.after' : 'tr.idle') },
+  merchant: { kind: 'merchant', name: 'พ่อค้าเครื่องเทศ', pick: () => (STORY.s.spice === 1 ? (_jbFull(1, 1) ? 'sp.full' : 'sp.give') : STORY.s.spice >= 2 ? 'sp.after' : 'sp.idle') },
+  snowA: { bid: 'snow:furfolk0', kind: 'furfolk', name: 'ชาวบ้านเกาะหิมะ', follow: true, pick: () => 'sn.a' },
+  snowB: { bid: 'snow:furfolk1', kind: 'furfolk', name: 'ชาวบ้านเกาะหิมะ', follow: true, pick: () => 'sn.b' },
+  snowC: { bid: 'snow:furfolk9', kind: 'furfolk', name: 'ชาวบ้านเกาะหิมะ', follow: true, pick: () => (STORY.s.tailor === 1 && !STORY.s.trapper ? 'sn.hint' : 'sn.c') },
+  desA: { bid: 'desert:robefolk0', kind: 'robefolk', name: 'ชาวบ้านเกาะทะเลทราย', follow: true, pick: () => 'ds.a' },
+  desB: { bid: 'desert:robefolk1', kind: 'robefolk', name: 'ชาวบ้านเกาะทะเลทราย', follow: true, pick: () => 'ds.b' },
+  desC: { bid: 'desert:robefolk9', kind: 'robefolk', name: 'ชาวบ้านเกาะทะเลทราย', follow: true, pick: () => (STORY.s.spice === 1 ? 'ds.hint' : 'ds.c') },
+});
+
+// ---------------- ไกด์ ----------------
+JOBS.goalText = () => {
+  const s = STORY.s, a = [];
+  if (s.tailor === 1) a.push('ไปรับขนสัตว์จากนายพรานบนเกาะหิมะ'); else if (s.tailor === 2) a.push('เอามัดขนสัตว์ไปส่งช่างตัดเสื้อในเมือง');
+  if (s.spice === 1) a.push('ไปรับเครื่องเทศจากพ่อค้าบนเกาะทะเลทราย'); else if (s.spice === 2) a.push('เอาห่อเครื่องเทศไปส่งคนทำขนมปังในเมือง');
+  return a.length ? a.join(' · ') : (s.tailor === 3 && s.spice === 3 ? 'ส่งงานรับจ้างครบสองงาน' : (s.tailor === 3 ? 'ทำงานรับจ้างที่เหลือ: ไปหาคนทำขนมปัง' : s.spice === 3 ? 'ทำงานรับจ้างที่เหลือ: ไปหาช่างตัดเสื้อ' : 'ทำงานรับจ้างให้ครบสองงาน'));
+};
+
+// ---------------- กระดิ่ง → นายพรานขุดหิมะ ----------------
+JOBS.init = () => {
+  const b = SNOWV.bell, h = SNOWV.h, T = JOBS.T, E = JOBS.e;
+  const geo = SNOWV.pile.geometry, pp = SNOWV.pile.position; geo.computeBoundingBox();   // ย้ายจุดหมุนของกองหิมะมาที่พื้นหน้าประตู ให้ย่อ scale ลงไปที่พื้นได้
+  const cx = SNOWV.door.pos[0], cz = h.z + h.D / 2 + HOUSE.T; geo.translate(-cx, -SNOWV.y0, -cz); pp.set(cx, SNOWV.y0, cz);
+  INTERACT.add({ id: 'trapper.bell', x: b.x, y: b.y, z: b.z, r: 1.0, dy: 1.3, tags: ['paws'], house: 'trapper', inHouse: 'trapper', hold: 1.4, hint: true,
+    can: () => STORY.s.tailor >= 1 && !STORY.s.trapper && T.stage === 0, text: () => _jbTouch('กดค้าง · ดึงเชือกกระดิ่ง', 'แตะปุ่มมือค้างไว้ · ดึงเชือกกระดิ่ง'), run: () => JOBS.ring() });
+  if (STORY.s.trapper === 1) { T.stage = 3; SNOWV.setFree(true); const e = E.trapper; e.x = h.x + 0.6; e.z = h.z + 1.8; e.spawn.x = e.x; e.spawn.z = e.z; }
+  else if (!SNOWV.door.locked) SNOWV.door.locked = true;
+  // ร้านขนมปังเปิดรับลูกค้าแล้ว (หลังบทที่ 1) — เซฟเก่าที่ข้ามบทนี้มาแล้วก็เปิดเลย
+  JOBS.openBakery();
+};
+JOBS.ring = () => {
+  const T = JOBS.T; if (T.stage || STORY.s.trapper) return;
+  T.stage = 1; T.t = 0; const e = JOBS.e.trapper, o = SNOWV.door;
+  UI.toast('กริ๊ง กริ๊ง… เสียงกระดิ่งดังก้องไปทั้งกระท่อม', 3600);
+  e.drive = (m, dt) => {   // เดินไปหน้าประตูด้านใน แล้วหยุดขุด
+    const tx = o.inPos[0], tz = o.inPos[2], dx = tx - m.x, dz = tz - m.z, d = Math.hypot(dx, dz), out = JOBS._in || (JOBS._in = { x: 0, y: 0, up: false, down: false });
+    out.x = out.y = 0; if (T.stage >= 2 || d < 0.45) { if (T.stage < 2) { T.stage = 2; T.t = 0; } SENSE.turnTo(m, m.x, m.z + 5, 6, dt); return out; }
+    const [ix, iy] = BODIES.fromWorld(dx / d * 0.55, dz / d * 0.55, m.kind); out.x = ix; out.y = iy; return out;
+  };
+};
+JOBS.openBakery = () => {
+  const h = HOUSE.byId.baker; if (!h) return;
+  const open = STORY.s.ch >= 2; h.plan.open = open;
+  if (open) for (const o of h.ops) if (o.kind === 'door' && o.locked) o.locked = false;
+};
+JOBS.update = (dt) => {
+  const T = JOBS.T, e = JOBS.e.trapper;
+  if (T.stage === 2) {
+    T.t += dt; const f = Math.min(1, T.t / JOBS.cfg.dig), p = SNOWV.pile;   // กองหิมะค่อยๆ ยุบลง
+    p.scale.set(1 - 0.12 * f, Math.max(0.04, 1 - f), 1 - 0.12 * f);
+    if (T.t >= JOBS.cfg.dig) { T.stage = 3; e.drive = null; p.scale.set(1, 1, 1); SNOWV.setFree(true); STORY.set('trapper', 1); UI.toast('นายพรานขุดหิมะออกแล้ว — ประตูกระท่อมเปิดแล้ว', 4000); e.ai.mode = 'rest'; e.ai.t = 1; }
+  }
+  if (STORY.s.ch >= 2 && !HOUSE.byId.baker.plan.open) JOBS.openBakery();
+};
+
+// ---------------- บทสอนเฉพาะจุด ----------------
+{
+  const nearE = (r) => { const B = PLAYER.camBody(); return (JOBS.e.ermine || []).some((e) => e.state !== 'gone' && !e.hid && Math.hypot(e.x - B.x, e.z - B.z) < r); };
+  const nearL = (r) => { const B = PLAYER.camBody(); return (JOBS.e.lizard || []).some((e) => e.state !== 'gone' && !e.hid && Math.hypot(e.x - B.x, e.z - B.z) < r); };
+  TUT.list.push(
+    { id: 'ermine', when: () => !PLAYER.ctl && STORY.s.tailor === 1 && !STORY.s.trapper && nearE(8) && PLAYER.form === 'human',
+      lines: [['thought', 'เออร์มีนตัวเล็กนั่น… เล็กพอจะลอดช่องใต้กองหิมะได้แน่'], ['tip', () => 'บังคับจิต: เข้าใกล้สิ่งที่เรืองแสงแล้ว ' + _jbTouch('กด E', 'แตะปุ่ม "บังคับ"')]], ok: () => !!PLAYER.ctl, min: 5, max: 16 },
+    { id: 'bell', when: () => !!PLAYER.ctl && PLAYER.ctl.kindId === 'ermine' && !STORY.s.trapper && STORY.s.tailor >= 1 && !!SNOWV.h && HOUSE.insideAt(PLAYER.ctl.x, PLAYER.ctl.y + 0.3, PLAYER.ctl.z) === SNOWV.h,
+      lines: [['tip', () => 'เชือกที่ห้อยลงมานั่นผูกกระดิ่งไว้ — ' + _jbTouch('กด F ค้างไว้', 'แตะปุ่มมือค้างไว้') + ' เพื่อดึงให้ดัง']], ok: () => !!STORY.s.trapper || JOBS.T.stage > 0, min: 3, max: 18 },
+    { id: 'lizard', when: () => !PLAYER.ctl && STORY.s.spice === 1 && nearL(8) && PLAYER.form === 'human',
+      lines: [['thought', 'กิ้งก่า… ถ้ามันวิ่งไปทำเสียงอีกทาง ยามคงหันไปดูทางนั้น']], ok: () => !!PLAYER.ctl, min: 4, max: 14 },
+  );
+}
 
 /* ---- 72-ui.js ---- */
 // 72-ui.js — HUD + ปุ่มสัมผัส (DOM/CSS ล้วน ไม่มีฟอนต์/ไฟล์ภายนอก)
@@ -5785,6 +6492,8 @@ function initScene() {
   TOWN.build(R.scene);      // เมือง + บ้านเข้าได้ (ต้องหลัง PROPS: ใช้ COLL/SOLID ร่วมกัน)
   FX.build(R.scene);
   WEATHER.build(R.scene);
+  SKY.build();              // เสาลมร้อนระหว่างเกาะ (ต้องหลัง WEATHER.build)
+  SNOWV.build(R.scene); DESV.build(R.scene);   // หมู่บ้านเกาะหิมะ/ทะเลทราย (ต้องหลัง TOWN.build: ใช้ HOUSE/COLL/SOLID ร่วมกัน · ก่อน BODY.build)
   const KR = BODIES.kinds.raven, KH = BODIES.kinds.hero;
   RIG.raven = RIG.create(KR.rig, KR.scale); R.scene.add(RIG.raven.root); RIG.addGhost(RIG.raven, R.scene);
   RIG.hero = RIG.create(KH.rig, KH.scale, KH.tint); R.scene.add(RIG.hero.root); RIG.addGhost(RIG.hero, R.scene);
@@ -5792,7 +6501,7 @@ function initScene() {
   PLAYER.init();
   BODY.build(R.scene); GLOW.init(R.scene, BODY.list.length + 240);   // ร่างในโลก + จุดเรืองแสง/แสงพุ่ง/ควันแปลงร่าง (ต้องสร้างหลัง PROPS: ใช้ COLL)
   UI.init(); MIND.init();
-  SENSE.build(); SENSE.buildFx(R.scene); BAG.build(R.scene); WIZ.init(); GOALS.init(); STORY.init(); TALK.init(); TUT.init(); INTRO.init();   // ระบบมองเห็น/ได้ยิน · กระเป๋า+ของในโลก · ฉากพ่อมด (ต้องหลัง BODY/TOWN/UI)
+  SENSE.build(); SENSE.buildFx(R.scene); BAG.build(R.scene); WIZ.init(); GOALS.init(); STORY.init(); TALK.init(); JOBS.init(); TUT.init(); INTRO.init();   // ระบบมองเห็น/ได้ยิน · กระเป๋า+ของในโลก · ฉากพ่อมด (ต้องหลัง BODY/TOWN/UI)
   if (HASH.debugcam) {
     CAM.setRange({ min: 36, max: 620 }); CAM.user = 105;
     const s = WORLD.byId[HASH.island]; CAM.panTo(s.x, s.z, true); CAM.setZoom(HASH.zoom || 105, true);
@@ -5826,6 +6535,8 @@ function frame(now) {
   TALK.update(dt);
   INTERACT.update(dt);
   BAKERY.update(dt);
+  JOBS.update(dt);
+  SKY.update();
   STORY.update(dt);
   TUT.update(dt);
   GOALS.update(dt);
@@ -5993,6 +6704,16 @@ DBG.intro = () => DBG.introState;
 DBG.introSkip = () => { INTRO.skip(); return DBG.introState; };
 DBG.introSeek = (t) => { if (!INTRO.on) return DBG.introState; INTRO._seek = true; while (INTRO.on && INTRO.t < t) { const d = Math.min(0.05, t - INTRO.t); if (d < 1e-4) break; FORM.update(d); INTRO.update(d); } INTRO._seek = false; return DBG.introState; };   // ก้าวเวลาของฉากไปข้างหน้า (เฟรมจริงยังไหลต่อได้ — ใช้คู่กับ introHold)
 DBG.introHold = (b) => { INTRO.hold = !!b; return INTRO.hold; };
+// ---- บทที่ 2: งานรับจ้าง หินลอย ลมร้อน (M5.6 งานย่อย 2) ----
+// jobs = สถานะงาน + ลำดับกระดิ่ง · sky = หินลอย/เสาลม/ขอบเกาะต้นทางปลายทางของแต่ละเส้นทาง · jobsSet(k,v) = ตั้งสถานะ (ตรวจเท่านั้น)
+Object.defineProperty(DBG, 'jobs', { enumerable: true, get: () => ({ s: Object.assign({}, STORY.s), stage: JOBS.T.stage, digT: _f2(JOBS.T.t), bag: BAG.items.map((i) => i.kind), goal: GOALS.list[GOALS.cur()].id, goalText: GOALS.tx(GOALS.list[GOALS.cur()]), bakeryOpen: !!HOUSE.byId.baker.plan.open,
+  trapper: JOBS.e.trapper ? { x: _f2(JOBS.e.trapper.x), z: _f2(JOBS.e.trapper.z), house: (HOUSE.insideAt(JOBS.e.trapper.x, JOBS.e.trapper.y, JOBS.e.trapper.z) || {}).id || null } : null,
+  door: SNOWV.door ? { locked: !!SNOWV.door.locked, open: SNOWV.door.open } : null, pile: SNOWV.pile ? { visible: SNOWV.pile.visible, sy: _f2(SNOWV.pile.scale.y), on: SNOWV.pileBox.on } : null }) });
+Object.defineProperty(DBG, 'sky', { enumerable: true, get: () => ({ routes: SKY.routes.map((R) => ({ id: R.id, a: R.edge.a.map(_f2), b: R.edge.b.map(_f2), gap: _f2(R.edge.gap) })), rocks: SKY.rocks.map((r) => ({ id: r.id, x: _f2(r.x), z: _f2(r.z), baseH: _f2(r.baseH), r: r.radius })), winds: WIND.cols.map((c) => ({ x: _f2(c.x), z: _f2(c.z), r: c.r, y0: _f2(c.y0), y1: _f2(c.y1) })), lift: _f2(WIND.lift(PLAYER)) }) });
+DBG.jobsSet = (k, v) => { STORY.s[k] = v; STORY.save(); return STORY.s; };
+DBG.ring = () => { JOBS.ring(); return JOBS.T.stage; };
+DBG.guards = () => (JOBS.e.guards || []).map((e) => ({ id: e.id, x: _f2(e.x), z: _f2(e.z), yaw: _f2(e.yaw), v: _f2(e.sus.v), lvl: e.sus.lvl, seen: e.sus.seenNow, mode: e.ai.mode }));
+DBG.zone = () => { const z = DESV.zone; return { z: [z.x0, z.x1, z.z0, z.z1].map(_f2), inZone: !!SENSE.zoneAt(PLAYER.camBody()), threat: SENSE.c ? _f2(SENSE.c.threat) : null }; };
 
 })();</script>
 </body>
