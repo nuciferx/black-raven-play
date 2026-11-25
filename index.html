@@ -995,11 +995,13 @@ SOLID.test = (x, y, z, r, h, tags) => {
 };
 
 // พื้นผิวยืนได้ที่สูงสุดที่ไม่เกิน y+step ณ (x,z) · คืน -Infinity ถ้าไม่มี
-SOLID.surfTop = (x, z, y, step) => {
+// tags = แท็กของตัวที่ถาม: พื้นผิวที่มี skipTags (เช่นตะแกรงช่องเล็กบนพื้นหอคอย) ตัวที่มีแท็กใดแท็กหนึ่งในนั้นจะ "ไม่มีพื้น" ตกผ่านลงไป
+SOLID.surfTop = (x, z, y, step, tags) => {
   const l = SOLID.sgrid.get(Math.floor(x / SOLID.cell) + ',' + Math.floor(z / SOLID.cell)); if (!l) return -Infinity;
   let best = -Infinity; const lim = y + step;
   for (const o of l) {
     if (!o.on || (o.box && !o.box.on) || x < o.x0 || x > o.x1 || z < o.z0 || z > o.z1) continue;
+    if (o.skipTags && tags && o.skipTags.some((q) => tags.indexOf(q) >= 0)) continue;
     const t = typeof o.top === 'function' ? o.top(x, z) : o.top;
     if (t <= lim && t > best) best = t;
   }
@@ -1007,8 +1009,8 @@ SOLID.surfTop = (x, z, y, step) => {
 };
 
 // ความสูงพื้นที่ (x,z) สำหรับตัวที่อยู่สูง y: พื้นดิน หรือพื้นผิวที่สูงกว่าซึ่งไม่เกิน y+step (ก้าวขึ้นได้) · null = ไม่มีพื้นเลย
-WORLD.floorAt = (x, z, y, step) => {
-  const g = WORLD.groundAt(x, z), s = SOLID.surfTop(x, z, y, step);
+WORLD.floorAt = (x, z, y, step, tags) => {
+  const g = WORLD.groundAt(x, z), s = SOLID.surfTop(x, z, y, step, tags);
   if (g === null) return s === -Infinity ? null : s;
   return s > g ? s : g;
 };
@@ -1046,7 +1048,8 @@ HOUSE.build = (plan, scene) => {
   const T = HOUSE.T, FY = HOUSE.FY, W = plan.W, D = plan.D, WH = plan.wallH || 3.1, px = plan.x, pz = plan.z;
   const base = (WORLD.groundAt(px, pz) || 0) + (plan.lift || 0), C = plan.colors;   // lift = ยกพื้นห้องสูงจากพื้นดิน (ห้องบนหอคอย)
   const cWall = _hc(C.wall), cTim = _hc(C.timber), cStone = _hc('#8f8a80'), cRoof = _hc(C.roof), cDark = _hc('#2a211c'), cFloor = _hc(C.floor || '#9a7a52');
-  const h = { id: plan.id, plan, x: px, z: pz, base, W, D, WH, ops: [], slots: [], fade: 1, fadeT: 1, interior: [px - W / 2, px + W / 2, pz - D / 2, pz + D / 2], leaves: [], mats: {} };
+  const tw = plan.tower, stone = !!plan.stone;   // tw = { k } = ชั้นของหอคอย · stone = ผนัง/พื้นหินก้อน (HOUSE.stoneRect)
+  const h = { id: plan.id, cid: plan.cid || plan.id, flv: 1, plan, x: px, z: pz, base, W, D, WH, ops: [], slots: [], fade: 1, fadeT: 1, interior: [px - W / 2, px + W / 2, pz - D / 2, pz + D / 2], leaves: [], mats: {} };
   const shell = new GB(), fade = new GB();
   const pick = (wall) => (wall === 'S' || wall === 'E' ? fade : shell);
   // กล่องในพิกัดผนัง: u0..u1 (ตามผนัง) v0..v1 (สูงจากพื้นดิน) n0..n1 (ตั้งฉาก; 0 = ผิวนอก, ลบ = เข้าไปในผนัง) → [x0,x1,y0,y1,z0,z1]
@@ -1065,6 +1068,7 @@ HOUSE.build = (plan, scene) => {
   (plan.doors || []).forEach((d, i) => defs.push({ kind: 'door', id: 'd' + i, wall: d.wall, u0: d.at - d.w / 2, u1: d.at + d.w / 2, v0: 0, v1: d.h || 2.1, locked: !!d.locked, open: !!d.open }));
   (plan.windows || []).forEach((d, i) => defs.push({ kind: 'window', id: 'w' + i, wall: d.wall, u0: d.at - d.w / 2, u1: d.at + d.w / 2, v0: d.sill || 1.0, v1: (d.sill || 1.0) + (d.h || 1.2), open: !!d.open }));
   (plan.vents || []).forEach((d, i) => defs.push({ kind: 'vent', id: 'v' + i, wall: d.wall, u0: d.at - d.w / 2, u1: d.at + d.w / 2, v0: d.v0 || 2.0, v1: d.v1 || 3.0, open: true }));
+  (plan.bars || []).forEach((d, i) => defs.push({ kind: 'bars', id: 'b' + i, wall: d.wall, u0: d.at - d.w / 2, u1: d.at + d.w / 2, v0: d.sill || 1.2, v1: (d.sill || 1.2) + (d.h || 1.4), open: false }));   // ลูกกรง: มองทะลุได้ ผ่านไม่ได้
   (plan.holes || []).forEach((d, i) => defs.push({ kind: 'hole', id: 'h' + i, wall: d.wall, u0: d.at - d.w / 2, u1: d.at + d.w / 2, v0: -0.4, v1: d.h || 0.5, open: true }));
   h.ops = defs;
   for (const o of defs) {   // ตำแหน่งกลางช่อง (ผิวนอก) + จุดหน้า/หลังช่อง (ให้ __dbg ใช้นำทาง)
@@ -1075,16 +1079,22 @@ HOUSE.build = (plan, scene) => {
   for (const o of defs) { const k = h.id + '.' + o.id; if (saved[k] !== undefined && (o.kind === 'door' || o.kind === 'window')) o.open = !!saved[k]; o.a = o.open ? 1 : 0; }
 
   // ---- พื้น ----
-  vis(shell, [px - W / 2 - T, px + W / 2 + T, base - 0.3, base + FY, pz - D / 2 - T, pz + D / 2 + T], cFloor);
-  for (let x = -W / 2 + 1; x < W / 2 - 0.1; x += 1) shell.box([px + x, base + FY + 0.005, pz], 0.05, 0.01, D, GFX.mul(cFloor, 0.8));   // เส้นแบ่งไม้พื้น
-  SOLID.addSurf(px - W / 2, px + W / 2, pz - D / 2, pz + D / 2, base + FY, { house: h.id });
+  if (plan.slabHoles) HOUSE.slab(h, shell, cFloor, vis);   // พื้นหิน (หอคอย) เจาะช่องบันได/ช่องเล็กได้
+  else {
+    vis(shell, [px - W / 2 - T, px + W / 2 + T, base - 0.3, base + FY, pz - D / 2 - T, pz + D / 2 + T], cFloor);
+    for (let x = -W / 2 + 1; x < W / 2 - 0.1; x += 1) shell.box([px + x, base + FY + 0.005, pz], 0.05, 0.01, D, GFX.mul(cFloor, 0.8));   // เส้นแบ่งไม้พื้น
+    SOLID.addSurf(px - W / 2, px + W / 2, pz - D / 2, pz + D / 2, base + FY, { house: h.id });
+  }
 
   // ---- ผนัง ----
   for (const wall of ['N', 'S', 'E', 'W']) {
     const g = pick(wall), L = wallLen(wall) / 2, ops = defs.filter((o) => o.wall === wall);
     HOUSE.cut(-L, L, -0.3, WH, ops, (u0, u1, v0, v1) => {
-      const b = wbox(wall, u0, u1, v0, v1, -T, 0); vis(g, b, GFX.mul(cWall, 0.97 + 0.06 * U.hash2(u0 * 10 | 0, v0 * 10 | 0, 3))); solid(b, { wall });
+      const b = wbox(wall, u0, u1, v0, v1, -T, 0);
+      if (stone) HOUSE.stoneRect(g, wbox, vis, wall, u0, u1, v0, v1, cWall); else vis(g, b, GFX.mul(cWall, 0.97 + 0.06 * U.hash2(u0 * 10 | 0, v0 * 10 | 0, 3)));
+      solid(b, { wall });
     });
+    if (stone) continue;
     HOUSE.cut(-L, L, -0.3, 0.7, ops, (u0, u1, v0, v1) => vis(g, wbox(wall, u0 - 0.0, u1, v0, v1, -T - 0.04, 0.05), cStone));            // ฐานหิน
     HOUSE.cut(-L, L, WH - 0.24, WH, ops, (u0, u1, v0, v1) => vis(g, wbox(wall, u0, u1, v0, v1, -T - 0.04, 0.07), cTim));                // คานบน
     HOUSE.cut(-L, L, 1.55, 1.72, ops, (u0, u1, v0, v1) => vis(g, wbox(wall, u0, u1, v0, v1, -T - 0.04, 0.06), cTim));                  // คานกลาง (โครงไม้)
@@ -1101,6 +1111,12 @@ HOUSE.build = (plan, scene) => {
       vis(g, wbox(o.wall, o.u0 - 0.1, o.u1 + 0.1, o.v1, o.v1 + 0.1, -T - 0.02, 0.06), cStone);
       vis(g, wbox(o.wall, o.u0, o.u1, -0.3, o.v1, -T + 0.05, -T + 0.1), cDark);
       solid(wbox(o.wall, o.u0, o.u1, -0.3, o.v1, -T, 0), { needTag: 'small', wall: o.wall, hole: true });
+    } else if (o.kind === 'bars') {   // ลูกกรงเหล็ก: กรอบหิน + ซี่แนวตั้งกลางผนัง + ราวขวาง · ตัวกั้นผ่านไม่ได้แต่ลำแสงมองทะลุได้ (needTag 'seethru' ไม่มีใครมี · SENSE มองผ่านได้)
+      const iron = _hc('#2c2c34'), nn0 = -T * 0.62, nn1 = -T * 0.38;
+      vis(g, wbox(o.wall, o.u0 - 0.08, o.u1 + 0.08, o.v1, o.v1 + 0.1, -T - 0.03, 0.05), cTim); vis(g, wbox(o.wall, o.u0 - 0.08, o.u1 + 0.08, o.v0 - 0.1, o.v0, -T - 0.03, 0.05), cTim);
+      for (let u = o.u0 + 0.12; u < o.u1 - 0.05; u += 0.22) vis(g, wbox(o.wall, u - 0.025, u + 0.025, o.v0, o.v1, nn0, nn1), iron);
+      vis(g, wbox(o.wall, o.u0, o.u1, (o.v0 + o.v1) / 2 - 0.03, (o.v0 + o.v1) / 2 + 0.03, nn0 - 0.02, nn1 + 0.02), iron);
+      o.blocker = solid(wbox(o.wall, o.u0, o.u1, o.v0, o.v1, -T, 0), { wall: o.wall, op: o.id, needTag: 'seethru' });
     } else if (o.kind === 'vent') {   // ช่องชายคา: กรอบไม้ + ซี่แนวตั้ง (ซี่เป็นแค่ลายตา ไม่ชน)
       vis(g, wbox(o.wall, o.u0 - 0.08, o.u1 + 0.08, o.v0 - 0.08, o.v0, -T - 0.02, 0.08), cTim); vis(g, wbox(o.wall, o.u0 - 0.08, o.u1 + 0.08, o.v1, o.v1 + 0.08, -T - 0.02, 0.08), cTim);
       vis(g, wbox(o.wall, o.u0 - 0.08, o.u0, o.v0, o.v1, -T - 0.02, 0.08), cTim); vis(g, wbox(o.wall, o.u1, o.u1 + 0.08, o.v0, o.v1, -T - 0.02, 0.08), cTim);
@@ -1122,6 +1138,8 @@ HOUSE.build = (plan, scene) => {
 
   // ---- เพดาน หลังคา ปล่องไฟ (ชุดที่จางได้) ----
   const cy = base + WH + 0.1, rh = plan.ridge || 3.0, rw = W + 2 * T + 0.9, rd = D + 2 * T + 1.0;
+  if (plan.noCeil) h.roofTop = base + WH;   // ชั้นกลางของหอคอย: เพดาน = พื้นของชั้นบน
+  else {
   vis(fade, [px - W / 2 - T, px + W / 2 + T, base + WH, base + WH + 0.2, pz - D / 2 - T, pz + D / 2 + T], GFX.mul(cWall, 0.85));
   SOLID.addBox(px - W / 2 - T, px + W / 2 + T, base + WH, base + WH + 0.2, pz - D / 2 - T, pz + D / 2 + T, { house: h.id, role: 'ceil' });
   SOLID.addBox(px - rw / 2, px + rw / 2, base + WH + 0.0, base + WH + 0.2, pz - rd / 2, pz + rd / 2, { house: h.id, role: 'eave' });
@@ -1136,20 +1154,23 @@ HOUSE.build = (plan, scene) => {
   fade.box([chx, cy + rh * 0.55 + 0.9, pz - 0.0], 0.9, rh * 1.1 + 1.8, 0.9, _hc('#8a8680')); fade.box([chx, cy + rh * 1.1 + 1.85, pz], 1.1, 0.16, 1.1, _hc('#5a5650'));
   SOLID.addSurf(px - rw / 2, px + rw / 2, pz - rd / 2, pz + rd / 2, (x, z) => cy + rh * (1 - Math.abs(z - pz) / (rd / 2)), { house: h.id, role: 'roof' });
   h.roofTop = cy + rh;
+  }
 
   // ---- เฟอร์นิเจอร์ ----
   const FY0 = base + FY;
   for (const f of plan.furniture || []) {
     const fx = px + f.x, fz = pz + f.z, K = HOUSE.furn[f.kind];
     const w = (f.rot ? K.d : K.w), d = (f.rot ? K.w : K.d);
-    SOLID.addBox(fx - w / 2, fx + w / 2, FY0, FY0 + K.h, fz - d / 2, fz + d / 2, { house: h.id, stand: true, role: 'furn', kind: f.kind });
+    SOLID.addBox(fx - w / 2, fx + w / 2, FY0, FY0 + K.h, fz - d / 2, fz + d / 2, { house: h.id, stand: true, role: 'furn', kind: f.kind, needTag: K.needTag });
     K.draw(shell, fx, FY0, fz, w, d, f.rot, h);
   }
   h.slots.forEach((s, i) => { s.id = h.id + '.slot' + i; s.house = h.id; });
+  if (plan.build) plan.build(h, { shell, fade, wbox, vis, solid, scene, base, FY, T, W, D, WH, px, pz });   // ตัวตกแต่งเพิ่มของแปลน (หอคอย: ไฟ บันได พื้นกระเบื้อง แสงเรือง)
 
   // ---- สร้าง mesh ----
   h.mats.fade = new THREE.MeshLambertMaterial({ vertexColors: true });
-  h.shell = new THREE.Mesh(shell.build(), GFX.mat); h.shell.castShadow = h.shell.receiveShadow = true;
+  if (tw) h.mats.shell = new THREE.MeshLambertMaterial({ vertexColors: true });   // ชั้นของหอคอยจางทั้งก้อนได้ (ชั้นที่สูงกว่าตัวที่คุม)
+  h.shell = new THREE.Mesh(shell.build(), h.mats.shell || GFX.mat); h.shell.castShadow = h.shell.receiveShadow = true;
   h.fadeMesh = new THREE.Mesh(fade.build(), h.mats.fade); h.fadeMesh.castShadow = h.fadeMesh.receiveShadow = true;
   scene.add(h.shell, h.fadeMesh);
 
@@ -1176,7 +1197,7 @@ HOUSE.build = (plan, scene) => {
     }
   }
   // รอยเท้าบ้านสำหรับการวางของ/AI เดินเตร่ (ไม่ดันตัวที่เดินจริง)
-  COLL.addBox(px, pz, W / 2 + T + 0.15, D / 2 + T + 0.15, 0, true, h.id);
+  if (!tw || tw.k === 1) COLL.addBox(px, pz, W / 2 + T + 0.15, D / 2 + T + 0.15, 0, true, h.cid);
   HOUSE.list.push(h); HOUSE.byId[h.id] = h;
   return h;
 };
@@ -1249,7 +1270,7 @@ HOUSE.insideAt = (x, y, z) => {
 };
 // รอยเท้าบ้าน (รวมผนัง) ที่จุดนี้ → id บ้าน (ใช้กับ AI เดินเตร่)
 HOUSE.at = (x, z) => {
-  for (const h of HOUSE.list) if (Math.abs(x - h.x) < h.W / 2 + HOUSE.T + 0.2 && Math.abs(z - h.z) < h.D / 2 + HOUSE.T + 0.2) return h.id;
+  for (const h of HOUSE.list) if (Math.abs(x - h.x) < h.W / 2 + HOUSE.T + 0.2 && Math.abs(z - h.z) < h.D / 2 + HOUSE.T + 0.2) return h.cid;
   return null;
 };
 
@@ -1266,17 +1287,57 @@ HOUSE.saveState = () => {
 // ทุกเฟรม: ไล่ค่าบาน · หลังคา/ผนังหน้ากล้องจางตามตัวที่กล้องตามอยู่
 HOUSE.update = (dt, cam) => {
   const ins = cam ? HOUSE.insideAt(cam.x, cam.y, cam.z) : null; HOUSE.inside = ins;
+  const N = TOWER.cur = ins && ins.plan.tower ? ins.plan.tower.k : 0;   // ชั้นของหอคอยที่ตัวที่กล้องตามอยู่ (0 = ไม่ได้อยู่ในหอคอย)
   for (const h of HOUSE.list) {
-    const tgt = h === ins ? 0 : 1, prevCast = h.fadeMesh.castShadow;
+    const tk = h.plan.tower ? h.plan.tower.k : 0, tgt = (tk ? N === tk : h === ins) ? 0 : 1, ftgt = tk && N > 0 && tk > N ? 0 : 1, prevCast = h.fadeMesh.castShadow;
     h.fade = Math.abs(h.fade - tgt) < 0.003 ? tgt : U.damp(h.fade, tgt, 5.5, dt);
-    const m = h.mats.fade, f = h.fade;
+    h.flv = Math.abs(h.flv - ftgt) < 0.003 ? ftgt : U.damp(h.flv, ftgt, 5.5, dt);
+    const m = h.mats.fade, f = h.fade * h.flv;
     if (f > 0.995) { m.transparent = false; m.opacity = 1; m.depthWrite = true; } else { m.transparent = true; m.opacity = f; m.depthWrite = f > 0.6; }
     h.fadeMesh.visible = f > 0.03; h.fadeMesh.castShadow = f > 0.05;
+    if (h.mats.shell) {
+      const s = h.mats.shell, v = h.flv, pc = h.shell.castShadow;
+      if (v > 0.995) { s.transparent = false; s.opacity = 1; s.depthWrite = true; } else { s.transparent = true; s.opacity = v; s.depthWrite = v > 0.6; }
+      h.shell.visible = v > 0.03; h.shell.castShadow = v > 0.5;
+      if (pc !== h.shell.castShadow) LOOK.sun.shadow.needsUpdate = true;
+    }
     if (prevCast !== h.fadeMesh.castShadow) LOOK.sun.shadow.needsUpdate = true;
     for (const o of h.leaves) {
       const t = o.open ? 1 : 0; o.a = Math.abs(o.a - t) < 0.004 ? t : U.damp(o.a, t, 6, dt);
       o.leaf.pivot.rotation.y = -o.a * 1.75;
-      o.leaf.root.visible = !o.leaf.fadeWall || f > 0.5;
+      o.leaf.root.visible = (!o.leaf.fadeWall || h.fade > 0.5) && h.flv > 0.03;
+    }
+  }
+};
+
+// พื้นหินของหอคอย: แผ่นพื้นเจาะช่อง (plan.slabHoles = [{x0,x1,z0,z1}] เทียบกลางห้อง) · ชั้น 1 = พื้นผิวยืนล้วน (ติดดิน) · ชั้นบน = กล่องทึบ (เป็นเพดานของชั้นล่าง กันเรเวนบินทะลุ)
+HOUSE.slab = (h, g, cFloor, vis) => {
+  const T = HOUSE.T, FY = HOUSE.FY, base = h.base, px = h.x, pz = h.z, W = h.W, D = h.D, solidOK = h.plan.tower && h.plan.tower.k > 1;
+  const hs = h.plan.slabHoles.map((q) => [px + q.x0, px + q.x1, pz + q.z0, pz + q.z1]);
+  const xs = new Set([px - W / 2 - T, px + W / 2 + T]), zs = new Set([pz - D / 2 - T, pz + D / 2 + T]);
+  for (const q of hs) { xs.add(q[0]); xs.add(q[1]); zs.add(q[2]); zs.add(q[3]); }
+  const ax = [...xs].sort((a, b) => a - b), az = [...zs].sort((a, b) => a - b);
+  for (let i = 0; i + 1 < ax.length; i++) for (let j = 0; j + 1 < az.length; j++) {
+    const x0 = ax[i], x1 = ax[i + 1], z0 = az[j], z1 = az[j + 1], cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
+    if (x1 - x0 < 1e-3 || z1 - z0 < 1e-3 || hs.some((q) => cx > q[0] && cx < q[1] && cz > q[2] && cz < q[3])) continue;
+    vis(g, [x0, x1, base - 0.3, base + FY, z0, z1], cFloor);
+    if (solidOK) SOLID.addBox(x0, x1, base - 0.3, base + FY, z0, z1, { house: h.id, stand: true, role: 'slab' });
+    else SOLID.addSurf(Math.max(x0, px - W / 2), Math.min(x1, px + W / 2), Math.max(z0, pz - D / 2), Math.min(z1, pz + D / 2), base + FY, { house: h.id });
+  }
+};
+// ผนังหินก้อน: เติมกล่องผนัง (ยาแนวเข้ม) ด้วยก้อนหินเรียงเป็นชั้น เหลื่อมกัน สีและความนูนสุ่ม (ค่าคงที่ตามตำแหน่ง ไม่ใช้ Math.random)
+HOUSE.stoneRect = (g, wbox, vis, wall, u0, u1, v0, v1, col) => {
+  const T = HOUSE.T, rows = Math.max(1, Math.round((v1 - v0) / 0.56)), rh = (v1 - v0) / rows, sd = wall.charCodeAt(0);
+  vis(g, wbox(wall, u0, u1, v0, v1, -T, 0), GFX.mul(col, 0.42));
+  for (let r = 0; r < rows; r++) {
+    let u = u0 - U.hash2(r, sd, 11) * 1.3;
+    for (let i = 0; u < u1 - 1e-3; i++) {
+      const w = 0.75 + U.hash2(i, r * 7 + sd, 12) * 1.0, a = Math.max(u, u0), b = Math.min(u + w, u1);
+      if (b - a > 0.2) {
+        const k = 0.8 + U.hash2((u * 13) | 0, r + sd, 13) * 0.34, tint = U.hash2(i, r, sd) - 0.5;
+        vis(g, wbox(wall, a + 0.025, b - 0.025, v0 + r * rh + 0.03, v0 + (r + 1) * rh - 0.03, -T - 0.025 - 0.04 * U.hash2(i, r, 14), 0.025 + 0.05 * U.hash2(i, r, 15)), [col[0] * k * (1 - tint * 0.12), col[1] * k, col[2] * k * (1 + tint * 0.14)]);
+      }
+      u += w;
     }
   }
 };
@@ -1317,9 +1378,9 @@ INTERACT.ui = () => {
 
 /* ---- 37-town.js ---- */
 // 37-town.js — เมืองยุคกลางบนเกาะเมือง (id `home`): ผังเมือง (ข้อมูล) + ตัวสร้าง · พิกัดในข้อมูลเป็น "เทียบกลางเกาะ"
-// ผัง (x ขวา/ตะวันออก +, z ใต้/ใกล้กล้อง +): ลานตลาด+บ่อน้ำที่ (0,0) · ถนนตะวันออก-ตะวันตก z=0 และ z=20 · ถนนเหนือ-ใต้ x=0 · หอคอยพ่อมดที่ (0,-27)
+// ผัง (x ขวา/ตะวันออก +, z ใต้/ใกล้กล้อง +): ลานตลาด+บ่อน้ำที่ (0,0) · ถนนตะวันออก-ตะวันตก z=0 และ z=20 · ถนนเหนือ-ใต้ x=0 · หอคอยพ่อมด 5 ชั้นที่ (0,-27)
 //   บ้านเข้าได้ 4 หลัง (HOUSE) + บ้านทึบ 5 หลัง + แผงตลาด 4 แผง + กำแพงเตี้ยรอบเมือง (เว้นที่ถนน) · ป่าอยู่นอกวงแบน (ของประดับเดิม)
-// จุดเสียบของช่วงที่ 2: TOWN.hooks.wizardDoor (ประตูหอคอยพ่อมด) · TOWN.slots (ที่วางของบนโต๊ะ/ชั้น/แผงตลาด) · HOUSE.byId[id].slots · TOWN.lamps (ไฟ)
+// จุดเสียบของช่วงที่ 2: TOWN.hooks.tower (หอคอยพ่อมด 5 ชั้น: ประตู หน้าต่าง ทางเชื่อม ไฟ) · TOWN.slots (ที่วางของบนโต๊ะ/ชั้น/แผงตลาด) · HOUSE.byId[id].slots · TOWN.lamps (ไฟ)
 const TOWN = { R: 36, cx: 0, cz: 0, start: { x: -22.5, z: 17.4, yaw: 2.4 }, hooks: {}, slots: [], lamps: [], built: false };
 const TOWN_PLANS = [
   // กระท่อมตัวเอก: ประตูไม่ล็อก (ใช้ทดสอบเดินเข้าบ้านเป็นร่างคน)
@@ -1343,12 +1404,6 @@ const TOWN_PLANS = [
     doors: [{ wall: 'S', at: 0, w: 1.2, h: 2.2, locked: true }], windows: [{ wall: 'S', at: -2.3, w: 1.5, h: 1.2, sill: 1.0 }, { wall: 'S', at: 2.3, w: 1.5, h: 1.2, sill: 1.0 }],
     holes: [{ wall: 'W', at: 1.2, w: 0.7 }],
     furniture: [{ kind: 'hearth', x: 0, z: -3.45 }, { kind: 'bed', x: -2.6, z: -2.4 }, { kind: 'table', x: 1.4, z: -0.8 }, { kind: 'bench', x: 1.4, z: 0.2 }, { kind: 'barrel', x: 2.9, z: -3.0 }, { kind: 'shelf', x: 3.0, z: 1.2, rot: 1 }] },
-  // ห้องพ่อมดบนหอคอย: ยกพื้นสูง 11 · หน้าต่างบน (ผนัง S) เปิดอยู่ = ทางเข้าของเรเวน · ไม่มีประตู (ของจริงอยู่ตัวหอด้านล่างซึ่งทึบ) · ไม่ใช่บ้านที่จะระวังตัวหลังถูกจับ
-  { id: 'wizard', x: 0, z: -27, W: 5.2, D: 5.2, wallH: 3.4, ridge: 2.8, lift: 11, noWary: true, exit: { x: 0, z: 5.6 }, chimney: { x: -1.6 },
-    colors: { wall: '#8a8796', roof: '#5b3a8a', timber: '#3e2f55', floor: '#6b5a7c', door: '#4a3a56' },
-    windows: [{ wall: 'S', at: 0, w: 2.0, h: 1.5, sill: 0.9, open: true }, { wall: 'E', at: 0.6, w: 1.2, h: 1.1, sill: 1.0 }],
-    furniture: [{ kind: 'table', x: 0.9, z: -0.7 }, { kind: 'shelf', x: -1.0, z: -2.15 }, { kind: 'bench', x: -1.9, z: 1.3, rot: 1 }],
-    resident: { kind: 'wizard', at: [-0.6, 0.4], yaw: 1.2, tint: { shirt: '#6a3fa8', pants: '#3a2a5a', skin: '#ffffff' } } },
 ];
 // บ้านทึบประกอบฉาก: [x, z, กว้าง, ลึก, สีผนัง, สีหลังคา]
 const TOWN_SOLID = [[-12, 13, 6, 6, '#e3d4b2', '#8f4a36'], [6.5, 13.5, 6, 7, '#d8cdb0', '#6a5a46'], [-26, -9, 5, 6, '#e6dcc2', '#9a5a3a'], [26, -8, 6, 7, '#dccfa8', '#6f7f8c'], [-14, -21, 6, 6, '#e8dcbe', '#a4552f']];
@@ -1373,7 +1428,7 @@ TOWN.build = (scene) => {
       else quad(ax + (bx - ax) * i / n, ax + (bx - ax) * (i + 1) / n, az - w / 2, az + w / 2, c);
     }
   };
-  strip(-35, 35, 0, 0, 4.2, false); strip(-30, 30, 20, 20, 4.2, false); strip(0, 0, -22, 22, 3.6, true);
+  strip(-35, 35, 0, 0, 4.2, false); strip(-30, 30, 20, 20, 4.2, false); strip(0, 0, -19.5, 22, 3.6, true);
   for (const p of TOWN_PLANS) if (!p.lift) quad(p.x - 1.4, p.x + 1.4, p.z + p.D / 2 + 0.3, p.z + p.D / 2 + 3.2, GFX.mul(dirt, 0.92), 0.06);   // ทางเข้าหน้าบ้าน (ใกล้ประตู)
   const pl = col('#b0a99c');   // ลานตลาด: วงกระเบื้องหินสลับเฉด
   for (let r = 0; r < 4; r++) for (let k = 0; k < 16 + r * 6; k++) {
@@ -1425,18 +1480,10 @@ TOWN.build = (scene) => {
     SOLID.addSurf(x - (ow + 0.9) / 2, x + (ow + 0.9) / 2, z - (od + 1.0) / 2, z + (od + 1.0) / 2, (xx, zz) => cy + rh * (1 - Math.abs(zz - z) / ((od + 1.0) / 2)), { house: 'solid' + i, role: 'roof' });
   });
 
-  // ---- หอคอยพ่อมด: เพลาหินทึบ (เดินเข้า/บินทะลุไม่ได้) + ห้องพ่อมดอยู่ข้างบน (บ้านเข้าได้ยกสูง — แปลน 'wizard') · ยอดหลังคาม่วงมาจากบ้าน ----
-  { const x = cx, z = cz - 27, LIFT = 11, sc = col('#7c7a86'), g0 = WORLD.groundAt(x, z) || 0;
-    st.limb([x, -0.4, z], [x, 1.5, z], 4.6, 4.2, 8, GFX.mul(sc, 0.8));
-    st.limb([x, 1.5, z], [x, LIFT - 0.8, z], 3.5, 3.0, 8, sc);
-    for (let k = 1; k < 5; k++) st.limb([x, LIFT * k / 5, z], [x, LIFT * k / 5 + 0.28, z], 3.6 - k * 0.12, 3.6 - k * 0.12, 8, GFX.mul(sc, 0.78));
-    st.limb([x, LIFT - 0.8, z], [x, LIFT, z], 3.0, 4.1, 8, GFX.mul(sc, 0.9));   // ฐานรองห้องบน บานออก
-    st.box([x, 1.2, z + 3.5], 1.7, 2.6, 0.5, col('#2a211c')); st.box([x, 1.2, z + 3.42], 2.2, 3.0, 0.3, GFX.mul(stone, 0.7));   // ประตูหอ (ซุ้มมืด · ตกแต่ง เข้าไม่ได้)
-    [[0.3, 4], [2.0, 6.5], [3.5, 9]].forEach(([a, h]) => glow.box([x + Math.cos(a) * 3.3, h, z + Math.sin(a) * 3.3], 0.5, 1.4, 0.5, [1, 1, 1]));
-    const cr = new GB(); cr.ball([0, 0, 0], 0.7, 0, [1, 1, 1], { jit: 0.1, cv: 0.1, seed: 77 }); TOWN.crystal = { geo: cr.build(), x, y: g0 + LIFT + 3.4 + 0.1 + 2.8 + 2.0, z };
-    solidBox(x - 3.2, x + 3.2, -0.5, g0 + LIFT, z - 3.2, z + 3.2, { house: 'tower' });
-    TOWN.hooks.wizardDoor = { x, y: 0, z: z + 3.9, tower: { x, z, top: g0 + LIFT } };
-    TOWN.hooks.wizardRoom = { house: 'wizard', window: 'w0', lift: LIFT };
+  // ---- หอคอยพ่อมด 5 ชั้น: แปลนอยู่ใน 38-towerdata.js / 39-towerbuild.js (สร้างเป็นบ้านเข้าได้ซ้อนกัน 5 ชั้นข้างล่าง) · ที่นี่เหลือแค่ผลึกลอยเหนือหลังคา ----
+  { const x = cx + TOWER.cx, z = cz + TOWER.cz, g0 = WORLD.groundAt(x, z) || 0, top = g0 + (TOWER.K - 1) * TOWER.P;
+    const cr = new GB(); cr.ball([0, 0, 0], 0.7, 0, [1, 1, 1], { jit: 0.1, cv: 0.1, seed: 77 }); TOWN.crystal = { geo: cr.build(), x, y: top + 3.5 + 0.1 + 3.2 + 2.4, z };
+    TOWN.hooks.tower = { door: 'tower1.d0', window: 'tower5.w0', links: TOWER.links, lights: TOWER.lights, floors: TOWER.K };
   }
 
   // ---- กำแพงเตี้ยรอบเมือง (เว้นถนน + ชำรุดบางช่วง) ----
@@ -1466,10 +1513,426 @@ TOWN.build = (scene) => {
   const cm = new THREE.Mesh(TOWN.crystal.geo, FX.mats.core.m); cm.position.set(TOWN.crystal.x, TOWN.crystal.y, TOWN.crystal.z); scene.add(cm); TOWN.crystalMesh = cm;
 
   // ---- บ้านเข้าได้ ----
-  for (const p of TOWN_PLANS) HOUSE.build(Object.assign({}, p, { x: cx + p.x, z: cz + p.z }), scene);
+  for (const p of TOWN_PLANS.concat(TOWER.plans())) HOUSE.build(Object.assign({}, p, { x: cx + p.x, z: cz + p.z }), scene);
   for (const h of HOUSE.list) for (const s of h.slots) TOWN.slots.push(s);
   TOWN.start.x += cx; TOWN.start.z += cz;
   TOWN.built = true;
+};
+
+/* ---- 38-towerdata.js ---- */
+// 38-towerdata.js — ข้อมูลล้วนของหอคอยพ่อมด 5 ชั้น (ไม่มีตรรกะ) · ตัวสร้างอยู่ 39-towerbuild.js · ตรรกะรันไทม์อยู่ 39-tower.js
+// พิกัดทุกค่าเป็น "เทียบกลางห้อง" (x ตะวันออก+, z ใต้/ใกล้กล้อง+) · y ของไฟเทียบพื้นห้องชั้นนั้น · ห้องกว้าง 12×12 (ด้านใน x,z ∈ [-6,6]) สูง wallH 3.5 · ชั้นห่างกัน P = 3.8
+// ชั้น k = 1..5 (1 ครัว/เสบียง ล่างสุด · 5 ห้องใต้หลังคา บนสุด) · plan ของชั้น = แปลนบ้านปกติ (35-house.js) + tower:{k} + stone + noCeil + slabHoles + lights + ...
+//
+// ทางเชื่อมระหว่างชั้น TOWER.links[i] = { id, kind:'stair'|'hatch', from (ชั้นล่าง), to (ชั้นบน), rect:[x0,x1,z0,z1], gate }
+//   stair = บันไดหิน: ทางลาด (พื้นผิวยืนได้ลาด) ขึ้นไปทางเหนือ (-z) ผ่านช่องเจาะบนพื้นชั้น to · ร่างคน/หนู/เรเวนเดินได้ (เรเวนบินผ่านช่องเปิดได้) · rect = ช่องบนพื้นชั้น to (ขอบเหนือติดพื้นชั้น to)
+//   hatch = ช่องเล็ก 1×1 บนพื้นชั้น to มีตะแกรงเหล็ก: ร่างที่มีแท็ก small หรือ bird (หนู เรเวน) ตกผ่านลงชั้น from ได้ · เรเวนบินขึ้นผ่านได้ · ร่างคนยืนบนตะแกรงได้ ลงไม่ได้
+//   gate = จุดยึดของช่วง ข: ใส่ { locked:true } แล้วตัวสร้างจะวางกล่องทึบ (link.blocker, SOLID) กั้นช่องไว้ (stair = ปากบันไดชั้นล่าง · hatch = ทับช่อง) + ลูกกรงตายตัว ·
+//     เปิด/ปิดทีหลังด้วย TOWER.setGate(id, locked) (สลับ blocker.on) — ภาพลูกกรงเปิด/ปิดได้ยังไม่ได้ทำ (ช่วง ข ทำเพิ่ม)
+const TOWER = {
+  P: 3.8, K: 5, W: 12, cx: 0, cz: -27, cur: 0, k: 0, built: false,
+  links: [
+    { id: 's1', kind: 'stair', from: 1, to: 2, rect: [3.0, 5.8, -4.4, 3.2], gate: null },
+    { id: 'h1', kind: 'hatch', from: 1, to: 2, rect: [1.4, 2.4, 4.3, 5.3], gate: null },
+    { id: 's2', kind: 'stair', from: 2, to: 3, rect: [-5.8, -3.0, -4.4, 3.2], gate: null },
+    { id: 'h2', kind: 'hatch', from: 2, to: 3, rect: [-2.3, -1.3, 4.3, 5.3], gate: null },
+    { id: 's3', kind: 'stair', from: 3, to: 4, rect: [3.0, 5.8, -4.4, 3.2], gate: null },
+    { id: 'h3', kind: 'hatch', from: 3, to: 4, rect: [1.4, 2.4, 4.3, 5.3], gate: null },
+    { id: 's4', kind: 'stair', from: 4, to: 5, rect: [-5.8, -3.0, -4.4, 3.2], gate: null },
+    { id: 'h4', kind: 'hatch', from: 4, to: 5, rect: [-2.3, -1.3, 3.2, 4.2], gate: null },
+  ],
+  // กติกาวางของ (ต้องเดินผ่านได้): ทางเดินกว้าง ≥ 1.2 · เว้นทางเดินแนวใต้ (z ≈ 3.4–4.2 ทั้งแถว) · เว้นทางเดินข้างช่องบันไดฝั่งกลางห้อง (x ≈ ±1.7..2.9) · เว้นแถบลานบนเหนือช่องบันได (z ≈ -4.9..-4.3 ฝั่งช่องบันได) — เพราะเส้นทางลงบันไดต้องเดินจากปลายล่างบันไดไปปลายบนของบันไดถัดไปได้
+  // ไฟ: kind torch (คบเพลิงผนัง N/W) · brazier (กระถางไฟ) · fire (เตาไฟ) · candle · cauldron (หม้อต้ม ไฟใต้หม้อ) · rune (อักขระเวท แสงฟ้า) · moon (แสงจันทร์ลอดลูกกรง ไม่ใช่ไฟ)
+  //   r = รัศมีแสง · I = ความแรงต่อค่าแสง (0..1) · pl = เลือกไปเป็น PointLight จริงได้ (มี 4 ดวงทั้งเกม ย้ายไปหาไฟใกล้ตัวที่คุม) · pool = รัศมีวงแสงบนพื้น (แสงลวง ใช้กับไฟที่ไม่ได้เป็น PointLight)
+  //   ไฟชนิด torch ต้องชิดผนัง N (z ≈ -5.8) หรือ W (x ≈ -5.8) เท่านั้น (ผนัง S/E จางหายตอนอยู่ชั้นนั้น)
+  floors: [
+    { k: 1, name: 'ครัว/ห้องเสบียง',
+      doors: [{ wall: 'S', at: 0, w: 1.4, h: 2.4, locked: true }],
+      bars: [{ wall: 'N', at: -1.0, w: 1.2, h: 1.1, sill: 1.5 }, { wall: 'W', at: 4.0, w: 1.2, h: 1.1, sill: 1.5 }],
+      furniture: [
+        { kind: 'table', x: -3.6, z: -2.2 },   // โต๊ะนี้ต้องมาก่อนของที่มีช่องวางของ: ช่อง tower1.slot1 = พายของพ่อมด (64-bag.js)
+        { kind: 'hearth', x: -2.0, z: -5.55 }, { kind: 'table', x: -0.3, z: 1.5 }, { kind: 'shelf', x: -5.65, z: -3.0, rot: 1 }, { kind: 'shelf', x: -5.65, z: 1.2, rot: 1 },
+        { kind: 'barrel', x: -5.1, z: 4.9 }, { kind: 'barrel', x: -4.2, z: 5.2 }, { kind: 'barrel', x: -5.3, z: 3.9 }, { kind: 'crate', x: -2.8, z: 5.2 }, { kind: 'crate', x: -1.9, z: 5.3 },
+        { kind: 'sack', x: -3.4, z: 4.5 }, { kind: 'barrel', x: 4.6, z: -5.3 }, { kind: 'sack', x: 5.3, z: -5.2 }, { kind: 'bench', x: 0.9, z: -3.8 },
+      ],
+      lights: [{ kind: 'fire', x: -2.0, y: 0.5, z: -5.0, r: 8.5, I: 1.0, pl: true, pool: 3.2 }, { kind: 'torch', x: -5.75, y: 2.2, z: -0.5, r: 6.5, I: 0.85, pl: true, pool: 2.4 }, { kind: 'brazier', x: 1.4, y: 0, z: 4.6, r: 6.5, I: 0.9, pl: true, pool: 2.6 }],
+      puddles: [{ x: -3.0, z: 3.3, w: 1.5, d: 0.9 }, { x: 1.8, z: -1.0, w: 1.1, d: 0.8 }], moss: [[-5.0, -5.0], [2.6, 5.3], [-2.0, 3.6]],
+      resident: { kind: 'wizard', at: [-1.0, -3.4], yaw: 3.14, tint: { shirt: '#6a3fa8', pants: '#3a2a5a', skin: '#ffffff' } } },
+    { k: 2, name: 'ห้องสมุด',
+      bars: [{ wall: 'W', at: -1.0, w: 1.3, h: 1.2, sill: 1.5 }, { wall: 'N', at: 4.2, w: 1.3, h: 1.2, sill: 1.5 }],
+      furniture: [
+        { kind: 'bookcase', x: -1.3, z: -5.62 }, { kind: 'bookcase', x: 1.3, z: -5.62 }, { kind: 'bookcase', x: 0, z: -2.2 }, { kind: 'bookcase', x: -2.0, z: 1.2, rot: 1 },
+        { kind: 'readdesk', x: 0.2, z: 1.4 }, { kind: 'readdesk', x: 0, z: 4.9 },
+      ],
+      lights: [{ kind: 'torch', x: -5.75, y: 2.2, z: 4.4, r: 6.5, I: 0.85, pl: true, pool: 2.4 }, { kind: 'brazier', x: 1.0, y: 0, z: -3.4, r: 6.5, I: 0.9, pl: true, pool: 2.6 }, { kind: 'candle', x: 0, y: 0.95, z: 4.9, r: 4.0, I: 0.7, pl: true, pool: 1.6 }],
+      puddles: [{ x: 0.2, z: 3.0, w: 1.0, d: 0.7 }], moss: [[2.2, -5.2], [-1.2, 3.5]] },
+    { k: 3, name: 'ห้องทดลอง',
+      bars: [{ wall: 'N', at: 4.3, w: 1.3, h: 1.2, sill: 1.5 }, { wall: 'W', at: -1.0, w: 1.3, h: 1.2, sill: 1.5 }],
+      furniture: [
+        { kind: 'labtable', x: 0, z: -4.4 }, { kind: 'cauldron', x: 1.7, z: -1.8 }, { kind: 'labtable', x: -0.9, z: 1.0, rot: 1 }, { kind: 'shelf', x: -1.8, z: -5.7 },
+        { kind: 'chest', x: 2.0, z: 4.6 }, { kind: 'crate', x: 0.6, z: 5.2 },
+      ],
+      lights: [{ kind: 'torch', x: 2.0, y: 2.2, z: -5.75, r: 6.5, I: 0.8, pl: true, pool: 2.4 }, { kind: 'cauldron', x: 1.7, y: 1.35, z: -1.8, r: 6.0, I: 0.85, pl: true, pool: 2.4 },
+        { kind: 'rune', x: 0.4, y: 0.1, z: 1.6, r: 4.8, I: 0.55, pl: true, pool: 0, radius: 1.9 }],
+      puddles: [{ x: 0.9, z: 3.4, w: 1.1, d: 0.8 }], moss: [[-5.2, -5.2], [3.2, 5.4]] },
+    { k: 4, name: 'คลังของ',
+      bars: [{ wall: 'N', at: 4.2, w: 1.3, h: 1.2, sill: 1.5 }, { wall: 'W', at: 0.0, w: 1.3, h: 1.2, sill: 1.5 }],
+      furniture: [
+        { kind: 'cage', x: 0, z: -3.0 }, { kind: 'chest', x: -2.0, z: -5.4 }, { kind: 'chest', x: 2.0, z: -5.4 }, { kind: 'barrel', x: 0.6, z: 0.6 }, { kind: 'barrel', x: 0.6, z: 1.6 },
+        { kind: 'crate', x: -2.0, z: 1.2 }, { kind: 'crate', x: -2.0, z: 2.1 }, { kind: 'armor', x: 0, z: 5.0 }, { kind: 'armor', x: -2.3, z: 5.0 },
+      ],
+      lights: [{ kind: 'torch', x: 0.0, y: 2.2, z: -5.75, r: 6.5, I: 0.8, pl: true, pool: 2.4 }, { kind: 'brazier', x: -0.7, y: 0, z: 1.2, r: 6.0, I: 0.85, pl: true, pool: 2.6 }],
+      puddles: [{ x: -0.6, z: 1.8, w: 1.0, d: 0.7 }], moss: [[-5.0, -5.4], [4.6, 5.0]] },
+    { k: 5, name: 'ห้องใต้หลังคา',
+      windows: [{ wall: 'S', at: 0, w: 2.0, h: 1.5, sill: 0.9, open: true }],
+      bars: [{ wall: 'N', at: -3.0, w: 1.0, h: 0.9, sill: 1.9 }],
+      furniture: [
+        { kind: 'crate', x: 4.4, z: -4.8 }, { kind: 'crate', x: 5.2, z: -4.8 }, { kind: 'crate', x: 4.8, z: -4.0 }, { kind: 'barrel', x: 5.2, z: -2.6 }, { kind: 'shelf', x: 1.5, z: -5.7 },
+        { kind: 'table', x: 1.0, z: -1.0 }, { kind: 'bench', x: -1.0, z: 1.8, rot: 1 }, { kind: 'chest', x: 5.0, z: 2.4 }, { kind: 'sack', x: 4.2, z: 4.6 },
+      ],
+      lights: [{ kind: 'torch', x: 3.0, y: 2.2, z: -5.75, r: 6.5, I: 0.75, pl: true, pool: 2.4 }, { kind: 'candle', x: 1.0, y: 0.95, z: -1.0, r: 4.0, I: 0.7, pl: true, pool: 1.6 }, { kind: 'moon', x: -0.8, y: 0.1, z: 4.0, r: 2.6, I: 0.45, pl: false }],
+      puddles: [{ x: 2.6, z: 1.8, w: 1.2, d: 0.8 }], moss: [[-5.0, 5.0], [5.0, 5.2]], webs: true, beams: true,
+      resident: { kind: 'mouse', at: [2.8, -2.8], yaw: 1.0, tint: { fur: '#7d7268' } } },
+  ],
+  // สีและขนาดร่วม
+  colors: { wall: '#7a7a8c', roof: '#5b3a8a', timber: '#33343f', floor: '#3e3e48', door: '#4a3626' },
+  // โทนภาพตอนอยู่ในหอคอย (ไล่ค่าเข้า/ออกใน 44-look.js ผ่าน TOWER.mixLook) · มืดอมฟ้าเทา แต่ hemiI สูงพอให้เห็นรูปทรงเสมอ
+  look: { sky: '#0d1424', skyLow: '#1c2740', sun: '#8aa0d8', sunI: 0.3, hemiSky: '#8e9cc4', hemiGround: '#4a5064', hemiI: 1.25, fog: '#182036', shadow: '#0a1020', sat: 0.88, exposure: 1.12, vignette: 0.5 },
+  cfg: { ambient: 0.1, shadowRange: 0.45, shadowClarity: 0.35, doorHint: 'ประตูหอคอยล็อกอยู่ — ลองหาทางอื่นจากข้างบน' },
+};
+
+/* ---- 39-tower.js ---- */
+// 39-tower.js — หอคอยพ่อมดตอนเล่น: แสงเรืองกะพริบ · PointLight 4 ดวงย้ายไปหาไฟใกล้ตัวที่คุม · โทนภาพในหอคอย · ค่าแสง lightAt (กติกาซ่อนตัว) · ประกายไฟ · คำใบ้ประตูล็อก · ประตูกั้น
+// TOWER.cur = ชั้นของตัวที่กล้องตามอยู่ (0 = อยู่นอกหอคอย · HOUSE.update ตั้งให้) · TOWER.k = ความเป็น "ในหอคอย" 0..1 (ไล่ค่า) ใช้ผสมโทนภาพ/แสง
+// ข้อมูลอยู่ 38-towerdata.js · ตัวสร้างอยู่ 39-towerbuild.js
+TOWER.lights = [];
+TOWER.slots = null;
+TOWER._hint = 0;
+
+// ค่าแสง 0..1 ที่จุด (x,y,z) · นอกหอคอยคืน 1 (นอกอาคารใช้กลางวัน/กลางคืนตามเดิม) · แสงถูกบังด้วยของทึบ (ชั้นหนังสือ ลัง) = ไม่ถึง · แสงจันทร์ไม่ถูกบัง
+TOWER.lightAt = (x, y, z) => {
+  const h = HOUSE.insideAt(x, y, z); if (!h || !h.plan.tower) return 1;
+  const k = h.plan.tower.k; let v = TOWER.cfg.ambient;
+  for (const L of TOWER.lights) {
+    if (L.k !== k) continue;
+    const d = Math.hypot(x - L.x, z - L.z, (y - L.y) * 0.5); if (d >= L.r) continue;
+    if (L.kind !== 'moon' && !SENSE.clear(L.x, L.y, L.z, x, y, z)) continue;
+    v += L.I * (1 - d / L.r);
+  }
+  return Math.min(1, v);
+};
+// ค่าแสงที่ตัวผู้ถูกมอง (ตัวที่ผู้เล่นคุม) ยืนอยู่ · null = ไม่อยู่ในหอคอย
+TOWER.lightFor = (B) => { const y = SENSE.cy(B), h = HOUSE.insideAt(B.x, y, B.z); return h && h.plan.tower ? TOWER.lightAt(B.x, y, B.z) : null; };
+TOWER.floorTop = (k) => { const h = HOUSE.byId['tower' + k]; return h ? h.base + HOUSE.FY : null; };
+
+// เปิด/ปิดประตูกั้นของทางเชื่อม (จุดยึดช่วง ข) · ต้องมี gate ในข้อมูลตั้งแต่สร้าง (blocker ถูกสร้างตอนนั้น)
+TOWER.setGate = (id, locked) => {
+  const L = TOWER.links.find((q) => q.id === id); if (!L || !L.blocker) return null;
+  L.gate.locked = !!locked; L.blocker.on = !!locked; return L.blocker.on;
+};
+
+// โทนภาพในหอคอย: ผสมเข้ากับโทนเกาะ (t = โทนเป้าหมายใน LOOK.update) ตามน้ำหนัก TOWER.k
+TOWER.mixLook = (t) => {
+  if (!TOWER._lk) { const o = TOWER._lk = {}, S = TOWER.look; for (const k of LOOK_COLORS) o[k] = new THREE.Color(S[k]); for (const k of LOOK_NUMS) o[k] = S[k]; }
+  const o = TOWER._lk, w = TOWER.k;
+  for (const k of LOOK_COLORS) t[k].lerp(o[k], w);
+  for (const k of LOOK_NUMS) if (o[k] !== undefined) t[k] += (o[k] - t[k]) * w;
+};
+
+// ทุกเฟรมหลัง HOUSE.update: ไล่ TOWER.k · แสงเรืองของชั้นที่ตัวที่คุมอยู่ (ชั้นอื่นซ่อน = คืนงบ draw call) กะพริบ · คำใบ้ประตูล็อก
+TOWER.update = (dt) => {
+  const tg = TOWER.cur > 0 ? 1 : 0;
+  TOWER.k = Math.abs(TOWER.k - tg) < 0.003 ? tg : U.damp(TOWER.k, tg, 3.0, dt);
+  const t = performance.now() / 1000;
+  for (const h of HOUSE.list) {
+    const w = h.tw; if (!w || !w.glow) continue;
+    const k = h.plan.tower.k;
+    w.gv = Math.abs((w.gv || 0) - (k === TOWER.cur ? 1 : 0)) < 0.004 ? (k === TOWER.cur ? 1 : 0) : U.damp(w.gv || 0, k === TOWER.cur ? 1 : 0, 6, dt);
+    w.glow.visible = w.gv > 0.03 && h.flv > 0.03; if (!w.glow.visible) continue;
+    w.mat.opacity = w.gv * h.flv;
+    const at = w.glow.geometry.attributes.color, a = at.array, b = w.base;
+    for (const g of w.grp) {
+      const m = 1 + g.flick * (Math.sin(t * 9 + g.ph) * 0.6 + Math.sin(t * 23.7 + g.ph * 2) * 0.4);
+      for (let i = g.v0 * 4, e = g.v1 * 4; i < e; i += 4) { a[i] = b[i] * m; a[i + 1] = b[i + 1] * m; a[i + 2] = b[i + 2] * m; }
+    }
+    at.needsUpdate = true;
+  }
+  // ร่างคนเดินชนประตูชั้น 1 ที่ล็อก → คำใบ้
+  TOWER._hint -= dt;
+  const h1 = HOUSE.byId.tower1, door = h1 && h1.ops.find((o) => o.kind === 'door'), B = INTERACT.who();
+  if (door && door.locked && !door.open && TOWER._hint <= 0 && B.kind.tags.indexOf('hands') >= 0 && TOWER.cur === 0 && !WIZ.lock) {
+    const dx = door.pos[0] - B.x, dz = door.pos[2] - B.z, d = Math.hypot(dx, dz) || 1, [wx, wz] = BODIES.toWorld(INPUT, B.kind);
+    if (d < 1.5 && Math.abs(B.y - h1.base) < 1.3 && (wx * dx + wz * dz) / d > 0.4) { UI.toast(TOWER.cfg.doorHint, 3600); TOWER._hint = 6; }
+  }
+};
+
+// PointLight ครบ 4 ดวงเดิมของเกม: ในหอคอยย้ายไปหาไฟ (pl:true) ที่ใกล้ตัวที่คุมที่สุดในชั้นนั้น · เปลี่ยนไฟที่ดวงนั้นถือ = หรี่จนมืดก่อนแล้วค่อยย้าย (ไม่เลื่อนผ่านห้อง) · ผ่านกลางทาง (TOWER.k ≈ 0.5) หรี่ลงชั่วขณะแล้วสลับระหว่างตำแหน่งเมือง/ตำแหน่งหอคอย
+TOWER.updateLights = (dt) => {
+  if (!FX.built) return;
+  if (!TOWER.slots) TOWER.slots = FX.lights.map((o) => ({ o, home: { pos: o.l.position.clone(), col: o.l.color.clone(), dist: o.l.distance }, id: null, want: null, a: 0, pos: new THREE.Vector3(), col: new THREE.Color(), dist: 12 }));
+  const S = TOWER.slots, k = TOWER.k, N = TOWER.cur, t = performance.now() / 1000;
+  if (k < 0.003 && S.every((s) => s.a < 0.003)) return;   // อยู่นอกหอคอยเต็มที่ = ปล่อยไฟเมืองตามเดิม
+  const B = PLAYER.camBody(); let want = [];
+  if (N > 0) want = TOWER.lights.filter((L) => L.pl && L.k === N).map((L) => ({ L, d: Math.hypot(L.x - B.x, L.z - B.z, (L.y - B.y) * 0.5) })).sort((a, b) => a.d - b.d).slice(0, S.length).map((q) => q.L);
+  for (const s of S) s.want = s.id && want.indexOf(s.id) >= 0 ? s.id : null;
+  const used = S.map((s) => s.want).filter(Boolean), free = want.filter((L) => used.indexOf(L) < 0);
+  for (const s of S) { s.a = U.damp(s.a, s.want ? 1 : 0, 7, dt); if (!s.want && s.a < 0.04 && free.length) { const L = s.id = free.shift(); s.want = L; s.pos.set(L.x, L.y + (L.kind === 'torch' ? 0.35 : 0.2), L.z); s.col.set(L.col); s.dist = L.r * 1.7; } }
+  const tower = k >= 0.5, f = Math.abs(k * 2 - 1);
+  for (const s of S) {
+    const l = s.o.l;
+    if (tower) {
+      l.position.copy(s.pos); l.color.copy(s.col); l.distance = s.dist;
+      const L = s.id, fl = L ? 1 + L.flick * (Math.sin(t * 9 + L.x) * 0.6 + Math.sin(t * 23.7 + L.z * 2) * 0.4) : 1;
+      l.intensity = L ? 30 * L.I * s.a * f * fl : 0;
+    } else { l.position.copy(s.home.pos); l.color.copy(s.home.col); l.distance = s.home.dist; l.intensity *= f; }
+  }
+};
+
+// ประกายไฟลอยขึ้นจากไฟที่ถือ PointLight อยู่ (วาดผ่าน GLOW ชนิด 6 · เรียกจาก MIND.update)
+TOWER.drawGlow = (t) => {
+  if (!TOWER.slots || TOWER.k < 0.5) return;
+  for (const s of TOWER.slots) {
+    const L = s.id; if (!L || s.a < 0.1 || L.kind === 'rune' || L.kind === 'moon') continue;
+    const hh = L.kind === 'brazier' ? 0.9 : (L.kind === 'candle' ? 0.2 : 0.6);
+    for (let i = 0; i < 5; i++) {
+      const age = (t * 0.42 + i / 5 + U.hash2(i, L.x * 7 | 0, 5)) % 1;
+      GLOW.add(L.x + Math.sin(i * 7.3 + t * 1.3) * 0.2 * age, L.y + hh + age * 1.7, L.z + Math.cos(i * 5.1 + t * 1.1) * 0.2 * age, 0.1 * (1 - age * 0.5), 6, (1 - age) * s.a);
+    }
+  }
+};
+
+/* ---- 39-towerbuild.js ---- */
+// 39-towerbuild.js — ตัวสร้างหอคอยพ่อมด: เฟอร์นิเจอร์ใหม่ · แปลน 5 ชั้นจากข้อมูล (38-towerdata.js) · ตกแต่งต่อชั้น (พื้นกระเบื้อง บันได ราว ตะแกรง ไฟ แสงเรือง)
+// TOWER.plans() → แปลนบ้านปกติ 5 ชั้น (HOUSE.build ของ 35-house.js สร้างผนัง/พื้น/ช่องเปิด/เฟอร์นิเจอร์) · plan.build = TOWER.decorate เติมของที่เหลือ
+// แสงเรือง: ชุดเดียวต่อชั้น (1 mesh · วัสดุ MeshBasic บวกสี additive · สี RGBA ต่อจุดยอด) = เปลวไฟ วงแสงบนพื้น ประกายสะท้อนแอ่งน้ำ ลำแสงจันทร์ อักขระเวท · เปลวกะพริบด้วยการคูณสีจุดยอดทุกเฟรม (TOWER.flicker)
+
+// GB ที่เก็บสี RGBA ต่อจุดยอด (g.al = alpha ปัจจุบัน) ใช้กับวัสดุ additive
+class GB4 extends GB {
+  constructor() { super(); this.al = 1; }
+  tri(a, b, c, rgb, ref) {
+    if (ref) {
+      const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2], vx = c[0] - a[0], vy = c[1] - a[1], vz = c[2] - a[2];
+      const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+      const mx = (a[0] + b[0] + c[0]) / 3 - ref[0], my = (a[1] + b[1] + c[1]) / 3 - ref[1], mz = (a[2] + b[2] + c[2]) / 3 - ref[2];
+      if (nx * mx + ny * my + nz * mz < 0) { const t = b; b = c; c = t; }
+    }
+    this.pos.push(a[0], a[1], a[2], b[0], b[1], b[2], c[0], c[1], c[2]);
+    for (let i = 0; i < 3; i++) this.col.push(rgb[0], rgb[1], rgb[2], this.al);
+  }
+  build() {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(this.pos, 3));
+    g.setAttribute('color', new THREE.Float32BufferAttribute(this.col, 4));
+    g.computeBoundingSphere();
+    return g;
+  }
+}
+
+// ---- เฟอร์นิเจอร์ของหอคอย (เพิ่มเข้า HOUSE.furn ที่ 35-house.js) ----
+{
+  const C = GFX.rgb, M = GFX.mul;
+  const F = HOUSE.furn;
+  F.sack = { w: 0.8, d: 0.8, h: 0.6, draw(g, x, y, z) { g.ball([x, y + 0.3, z], 0.42, 0, C('#a89a78'), { sy: 0.8, jit: 0.1, seed: 61, cv: 0.12 }); g.box([x, y + 0.62, z], 0.22, 0.08, 0.22, C('#7a6a4a')); } };
+  F.chest = { w: 1.2, d: 0.7, h: 0.75, draw(g, x, y, z, w, d) {
+    const wd = C('#6a4a2e'), ir = C('#2e2e36'), a = w > d;
+    g.box([x, y + 0.31, z], w, 0.62, d, wd); g.box([x, y + 0.68, z], w - 0.04, 0.14, d - 0.04, M(wd, 1.12));
+    for (const s of [-0.3, 0.3]) g.box([x + (a ? s * w : 0), y + 0.4, z + (a ? 0 : s * d)], a ? 0.08 : w + 0.04, 0.8, a ? d + 0.04 : 0.08, ir);
+  } };
+  F.cauldron = { w: 1.2, d: 1.2, h: 1.0, draw(g, x, y, z) {
+    const ir = C('#2a2a32');
+    for (let i = 0; i < 3; i++) { const a = i * 2.094 + 0.4; g.limb([x + Math.cos(a) * 0.4, y, z + Math.sin(a) * 0.4], [x + Math.cos(a) * 0.3, y + 0.35, z + Math.sin(a) * 0.3], 0.07, 0.06, 5, ir); }
+    g.limb([x, y + 0.3, z], [x, y + 0.95, z], 0.42, 0.55, 10, ir); g.limb([x, y + 0.92, z], [x, y + 1.0, z], 0.58, 0.58, 10, M(ir, 1.4));
+    g.limb([x, y + 0.9, z], [x, y + 0.93, z], 0.5, 0.5, 10, C('#4fa845'));   // น้ำยาในหม้อ (ภาพเรืองอยู่ในชุดแสงเรือง)
+  } };
+  F.labtable = { w: 2.4, d: 1.1, h: 0.95, draw(g, x, y, z, w, d) {
+    const wood = C('#6e5236'), dk = C('#4a3622'), a = w > d;
+    g.box([x, y + 0.88, z], w, 0.1, d, wood);
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) g.box([x + sx * (w / 2 - 0.1), y + 0.42, z + sz * (d / 2 - 0.1)], 0.12, 0.84, 0.12, dk);
+    const cols = ['#c0463a', '#3f86c8', '#6ab04a', '#c9a52a', '#8a52c0'];
+    for (let i = 0; i < 6; i++) { const o = (i - 2.5) * 0.36, bx = x + (a ? o : 0.0), bz = z + (a ? (i % 2 ? 0.18 : -0.18) : o); g.limb([bx, y + 0.93, bz], [bx, y + 1.18 + (i % 3) * 0.04, bz], 0.09, 0.07, 6, C(cols[i % 5])); g.limb([bx, y + 1.18, bz], [bx, y + 1.3, bz], 0.035, 0.035, 5, C('#cfc9b8')); }
+  } };
+  F.bookcase = { w: 2.4, d: 0.6, h: 2.9, draw(g, x, y, z, w, d) {   // สูงพอบังสายตา · หนังสือเป็นก้อนสี
+    const wd = C('#5a3f28'), a = w > d, L = a ? w : d, cols = ['#8c2f2f', '#2f4f8c', '#2f7a4f', '#8c6a2f', '#5a2f7a', '#7a7a6a'];
+    g.box([x, y + 1.45, z], w, 2.9, d, M(wd, 0.7));
+    for (let r = 0; r < 5; r++) {
+      const sy = y + 0.1 + r * 0.55; g.box([x, sy, z], w - 0.04, 0.07, d + 0.04, wd);
+      let o = -L / 2 + 0.14;
+      for (let i = 0; o < L / 2 - 0.16; i++) { const bw = 0.07 + 0.08 * U.hash2(i, r, 71), bh = 0.3 + 0.17 * U.hash2(i, r, 72); g.box([x + (a ? o + bw / 2 : 0), sy + 0.035 + bh / 2, z + (a ? 0 : o + bw / 2)], a ? bw : d - 0.16, bh, a ? d - 0.16 : bw, C(cols[(i * 3 + r) % 6])); o += bw + 0.01; }
+    }
+    g.box([x, y + 2.92, z], w + 0.08, 0.08, d + 0.08, wd);
+  } };
+  F.readdesk = { w: 1.8, d: 1.0, h: 0.88, draw(g, x, y, z, w, d) {
+    const wood = C('#7a5a38'), dk = C('#4e3a24');
+    g.box([x, y + 0.82, z], w, 0.09, d, wood);
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) g.box([x + sx * (w / 2 - 0.1), y + 0.4, z + sz * (d / 2 - 0.1)], 0.1, 0.8, 0.1, dk);
+    g.box([x - 0.35, y + 0.9, z], 0.5, 0.05, 0.36, C('#c8c0a8')); g.box([x - 0.35, y + 0.93, z], 0.46, 0.015, 0.32, C('#e8e0c8')); g.box([x + 0.5, y + 0.9, z + 0.1], 0.3, 0.07, 0.22, C('#7a2f2f'));
+    g.limb([x + 0.2, y + 0.87, z - 0.25], [x + 0.2, y + 0.99, z - 0.25], 0.06, 0.05, 6, C('#d8d0b8'));   // เชิงเทียน (เปลวอยู่ในชุดแสงเรือง)
+  } };
+  F.cage = { w: 2.2, d: 1.6, h: 2.2, needTag: 'seethru', draw(g, x, y, z, w, d) {   // ลูกกรงเหล็ก: ชนผ่านไม่ได้ แต่มองทะลุได้
+    const ir = C('#2c2c34');
+    g.box([x, y + 0.06, z], w, 0.12, d, ir); g.box([x, y + 2.16, z], w, 0.1, d, ir);
+    for (let i = 0; i <= 10; i++) { const u = -w / 2 + 0.06 + i * (w - 0.12) / 10; for (const s of [-1, 1]) g.box([x + u, y + 1.1, z + s * (d / 2 - 0.04)], 0.05, 2.1, 0.05, ir); }
+    for (let i = 1; i < 7; i++) { const u = -d / 2 + 0.06 + i * (d - 0.12) / 7; for (const s of [-1, 1]) g.box([x + s * (w / 2 - 0.04), y + 1.1, z + u], 0.05, 2.1, 0.05, ir); }
+    g.box([x, y + 0.4, z], 0.7, 0.4, 0.5, C('#7a6a4a'));
+  } };
+  F.armor = { w: 0.8, d: 0.8, h: 2.1, draw(g, x, y, z) {   // ชุดเกราะตั้ง (ของตกแต่ง · ช่วง ข จะใช้เป็นจุดเกิดของเฝ้า)
+    const st = C('#8a8e9c'), dk = C('#4a4d5a');
+    g.box([x, y + 0.08, z], 0.7, 0.16, 0.7, dk);
+    for (const s of [-1, 1]) g.limb([x + s * 0.14, y + 0.15, z], [x + s * 0.14, y + 0.95, z], 0.1, 0.09, 6, st);
+    g.box([x, y + 1.3, z], 0.52, 0.65, 0.34, st); g.box([x, y + 1.0, z], 0.5, 0.12, 0.34, dk);
+    for (const s of [-1, 1]) { g.ball([x + s * 0.34, y + 1.55, z], 0.15, 0, st); g.limb([x + s * 0.36, y + 1.5, z], [x + s * 0.36, y + 0.95, z + 0.05], 0.08, 0.07, 6, st); }
+    g.ball([x, y + 1.85, z], 0.2, 0, st, { cv: 0.06 }); g.box([x, y + 1.85, z + 0.12], 0.26, 0.05, 0.1, dk); g.limb([x, y + 2.0, z], [x, y + 2.1, z], 0.04, 0.0, 5, C('#a83a3a'));
+  } };
+}
+
+// ---- แปลน 5 ชั้นจากข้อมูล ----
+TOWER.plans = () => TOWER.floors.map((F) => {
+  const k = F.k, holes = TOWER.links.filter((l) => l.to === k).map((l) => ({ x0: l.rect[0], x1: l.rect[1], z0: l.rect[2], z1: l.rect[3] }));
+  return { id: 'tower' + k, cid: 'tower', tower: { k, name: F.name }, tw: F, x: TOWER.cx, z: TOWER.cz, W: TOWER.W, D: TOWER.W, wallH: 3.5, ridge: 3.2, lift: (k - 1) * TOWER.P,
+    stone: true, noCeil: k < TOWER.K, noWary: true, exit: { x: 0, z: TOWER.W / 2 + 2.6 }, inZoom: 0.2, inZoomP: -0.2, colors: TOWER.colors, slabHoles: holes,
+    doors: F.doors, windows: F.windows, bars: F.bars, furniture: F.furniture, resident: F.resident, build: TOWER.decorate };
+});
+
+// ---- ตกแต่งต่อชั้น (เรียกจาก HOUSE.build ผ่าน plan.build) ----
+TOWER.decorate = (h, c) => {
+  const F = h.plan.tw, k = h.plan.tower.k, y0 = c.base + c.FY, px = c.px, pz = c.pz, gl = new GB4(), grp = [];
+  const holes = h.plan.slabHoles, ramps = TOWER.links.filter((l) => l.from === k && l.kind === 'stair').map((l) => l.rect);
+  const inRect = (x, z, q, m) => x > px + q[0] - m && x < px + q[1] + m && z > pz + q[2] - m && z < pz + q[3] + m;
+  const blocked = (x, z, m) => holes.some((q) => inRect(x, z, [q.x0, q.x1, q.z0, q.z1], m)) || ramps.some((q) => inRect(x, z, q, m));
+  h.tw = { glow: null, grp, base: null, lights: [] };
+  TOWER.floorDeco(h, c, F, y0, blocked);
+  TOWER.stairs(h, c, k, y0);
+  TOWER.lightsBuild(h, c, F, k, y0, gl, grp, blocked);
+  if (F.beams) for (const z of [-4.1, -1.4, 1.3, 4.0]) c.fade.box([px, c.base + c.WH - 0.2, pz + z], c.W, 0.3, 0.34, GFX.rgb('#4a3826'));
+  if (F.webs) {   // ใยแมงมุมที่มุมผนัง N/W ใต้เพดาน
+    const w = GFX.rgb('#a9a9b4'), top = c.base + c.WH - 0.05, ref = [px, top - 1.5, pz], a = c.W / 2 - 0.02;
+    c.shell.tri([px - a, top, pz - a], [px - a + 1.5, top, pz - a], [px - a, top - 1.1, pz - a], w, ref); c.shell.tri([px - a, top, pz - a], [px - a, top, pz - a + 1.5], [px - a, top - 1.2, pz - a], w, ref);
+    c.shell.tri([px + a - 1.4, top, pz - a], [px + a, top, pz - a], [px + a - 0.2, top - 0.9, pz - a], w, ref); c.shell.tri([px - a + 3.4, top, pz - a], [px - a + 4.6, top, pz - a], [px - a + 4.1, top - 0.6, pz - a], w, ref);
+  }
+  // ---- mesh แสงเรือง ----
+  const geo = gl.build(), mat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
+  const m = new THREE.Mesh(geo, mat); m.renderOrder = 3; m.castShadow = false; m.receiveShadow = false; m.frustumCulled = false; c.scene.add(m);
+  h.tw.glow = m; h.tw.mat = mat; h.tw.base = new Float32Array(geo.attributes.color.array);
+};
+
+// พื้นกระเบื้อง รอยแตก ตะไคร่ แอ่งน้ำ (ค่าคงที่ตามตำแหน่ง)
+TOWER.floorDeco = (h, c, F, y0, blocked) => {
+  const g = c.shell, px = c.px, pz = c.pz, k = h.plan.tower.k, tile = GFX.rgb('#7c7c8c');
+  for (let i = 0; i < 8; i++) for (let j = 0; j < 8; j++) {
+    const x = px - 6 + 0.75 + i * 1.5, z = pz - 6 + 0.75 + j * 1.5;
+    if (blocked(x, z, -0.1) || blocked(x - 0.7, z - 0.7, 0) && blocked(x + 0.7, z + 0.7, 0) && blocked(x + 0.7, z - 0.7, 0)) continue;
+    const q = 0.72 + 0.4 * U.hash2(i, j, 80 + k), tint = U.hash2(i, j, 90 + k) - 0.5;
+    g.box([x, y0 + 0.006 + 0.004 * U.hash2(i, j, 85), z], 1.42, 0.012, 1.42, [tile[0] * q * (1 - tint * 0.1), tile[1] * q, tile[2] * q * (1 + tint * 0.12)]);
+  }
+  for (let i = 0; i < 6; i++) {   // รอยแตก
+    const x = px + (U.hash2(i, k, 81) - 0.5) * 10, z = pz + (U.hash2(i, k, 82) - 0.5) * 10;
+    if (blocked(x, z, 0.8)) continue;
+    g.box([x, y0 + 0.016, z], 0.035, 0.008, 0.7 + 0.9 * U.hash2(i, k, 83), GFX.rgb('#17171d'), U.hash2(i, k, 84) * 3.14);
+  }
+  for (const [mx, mz] of F.moss || []) for (let i = 0; i < 4; i++) {   // ตะไคร่
+    const x = px + mx + (U.hash2(i, k, 86) - 0.5) * 0.9, z = pz + mz + (U.hash2(i, k, 87) - 0.5) * 0.9;
+    if (blocked(x, z, 0.2)) continue;
+    g.box([x, y0 + 0.02, z], 0.35 + 0.35 * U.hash2(i, k, 88), 0.012, 0.3 + 0.3 * U.hash2(i, k, 89), GFX.mul(GFX.rgb('#3b5a30'), 0.8 + 0.4 * U.hash2(i, mx | 0, 91)), U.hash2(i, k, 92) * 3);
+  }
+  for (const p of F.puddles || []) g.box([px + p.x, y0 + 0.022, pz + p.z], p.w, 0.012, p.d, GFX.rgb('#0b1018'));
+};
+
+// ทางลาดบันได + ราวช่องบันได + ตะแกรงช่องเล็ก + ประตูกั้น (จุดยึดช่วง ข)
+TOWER.stairs = (h, c, k, y0) => {
+  const g = c.shell, px = c.px, pz = c.pz, P = TOWER.P, ir = GFX.rgb('#2c2c34'), st = GFX.rgb('#8b8b99');
+  for (const L of TOWER.links) {
+    const [x0, x1, z0, z1] = L.rect, cx = px + (x0 + x1) / 2, w = x1 - x0;
+    if (L.from === k && L.kind === 'stair') {   // ทางลาดอยู่ชั้นล่าง (ขึ้นไปทางเหนือ -z) ปลายสูงชนพื้นชั้นบนพอดี · ขั้นบันไดเป็นภาพ (ไม่ชน) ตามแนวทางลาด
+      const zN = pz + z0, zS = pz + z1, len = z1 - z0;
+      SOLID.addSurf(px + x0, px + x1, zN, zS, (x, z) => y0 + P * U.clamp((zS - z) / len, 0, 1), { house: h.id, role: 'stair', link: L.id });
+      const n = Math.round(len / 0.5), dz = len / n, rs = P / n;
+      for (let i = 0; i < n; i++) {
+        const top = y0 + (i + 0.5) * rs;
+        g.box([cx, top - rs * 0.55, zS - (i + 0.5) * dz], w, rs * 1.1, dz * 1.02, GFX.mul(st, 0.85 + 0.2 * U.hash2(i, k, 95)));
+      }
+      for (const sx of [x0, x1]) g.box([px + sx + (sx === x0 ? 0.06 : -0.06), y0 + 0.2, (zN + zS) / 2], 0.12, 0.4, len, GFX.mul(st, 0.7));   // แนวขอบข้างทางลาด
+      if (L.gate) {
+        L.blocker = SOLID.addBox(px + x0, px + x1, y0, y0 + 2.3, zS - 0.25, zS, { house: h.id, role: 'gate', link: L.id }); L.blocker.on = !!L.gate.locked;
+        if (L.gate.locked) { for (let u = x0 + 0.1; u < x1; u += 0.22) g.box([px + u, y0 + 1.15, zS - 0.12], 0.05, 2.3, 0.05, ir); g.box([cx, y0 + 2.3, zS - 0.12], w, 0.08, 0.08, ir); }
+      }
+    }
+    if (L.to === k && L.kind === 'stair') {   // ราวกั้นขอบช่องบันไดบนพื้นชั้นนี้ (ด้านที่ไม่ติดผนัง + ด้านใต้) · ปลายเหนือเปิดเป็นทางลง (ราวด้านในเริ่มช้ากว่าขอบเหนือ 0.5 ให้คนเดินผ่านแถบลานบนได้)
+      const inner = x0 < 0 ? x1 : x0, rail = (xa, xb, za, zb) => { const b = [xa, xb, y0, y0 + 1.0, za, zb]; SOLID.addBox(b[0], b[1], b[2], b[3], b[4], b[5], { house: h.id, role: 'rail' }); g.box([(xa + xb) / 2, y0 + 0.95, (za + zb) / 2], xb - xa + 0.04, 0.08, zb - za + 0.04, ir); g.box([(xa + xb) / 2, y0 + 0.5, (za + zb) / 2], xb - xa, 0.05, zb - za, ir); };
+      rail(px + inner - 0.06, px + inner + 0.06, pz + z0 + 0.5, pz + z1); rail(px + x0, px + x1, pz + z1 - 0.06, pz + z1 + 0.06);
+      for (let z = z0 + 0.5; z <= z1 + 0.01; z += 1.3) g.box([px + inner, y0 + 0.5, pz + z], 0.1, 1.0, 0.1, ir);
+      for (let u = x0; u <= x1 + 0.01; u += 1.4) g.box([px + u, y0 + 0.5, pz + z1], 0.1, 1.0, 0.1, ir);
+    }
+    if (L.to === k && L.kind === 'hatch') {   // ช่องเล็ก + ตะแกรง: คนยืนบนตะแกรงได้ (พื้นผิว) · ตัวที่มีแท็ก small/bird ไม่มีพื้น ตกผ่านลงชั้นล่าง
+      SOLID.addSurf(px + x0, px + x1, pz + z0, pz + z1, y0, { house: h.id, role: 'grate', link: L.id, skipTags: ['small', 'bird'] });
+      for (const [a, b, c1, d] of [[x0 - 0.08, x1 + 0.08, z0 - 0.08, z0], [x0 - 0.08, x1 + 0.08, z1, z1 + 0.08], [x0 - 0.08, x0, z0, z1], [x1, x1 + 0.08, z0, z1]]) g.box([px + (a + b) / 2, y0 + 0.03, pz + (c1 + d) / 2], b - a, 0.07, d - c1, ir);
+      for (let u = x0 + 0.1; u < x1; u += 0.16) g.box([px + u, y0 + 0.02, pz + (z0 + z1) / 2], 0.04, 0.05, z1 - z0, ir);
+      g.box([px + (x0 + x1) / 2, y0 + 0.02, pz + (z0 + z1) / 2], x1 - x0, 0.05, 0.04, ir);
+      if (L.gate) { L.blocker = SOLID.addBox(px + x0, px + x1, y0 - 0.3, y0 + 0.12, pz + z0, pz + z1, { house: h.id, role: 'gate', link: L.id }); L.blocker.on = !!L.gate.locked; }
+    }
+  }
+};
+
+// ไฟทั้งหมดของชั้น: โครงในชุดทึบ + เปลวในชุดแสงเรือง + วงแสงบนพื้น + ประกายแอ่งน้ำ + ลำแสงจันทร์/อักขระ · ลงทะเบียน TOWER.lights (ให้ lightAt/PointLight ใช้)
+TOWER.lightsBuild = (h, c, F, k, y0, gl, grp, blocked) => {
+  const g = c.shell, px = c.px, pz = c.pz, ir = GFX.rgb('#2c2c34'), wd = GFX.rgb('#5a3f28');
+  const FL = { fire: [2.6, 1.2, 0.3], torch: [2.4, 1.1, 0.3], brazier: [2.4, 1.1, 0.3], candle: [2.2, 1.3, 0.4], cauldron: [1.0, 2.0, 0.7], rune: [0.25, 0.6, 1.5], moon: [0.3, 0.46, 0.95] };
+  const COL = { fire: '#ff9a40', torch: '#ffa050', brazier: '#ff8a38', candle: '#ffb868', cauldron: '#b4e060', rune: '#78a8ff', moon: '#9cb4ff' };
+  const quad = (x, z, w, d, y, col, al, sk) => { gl.al = al; const a = [x - w / 2, y, z - d / 2], b = [x + w / 2, y, z - d / 2], cc = [x + w / 2 + (sk || 0), y, z + d / 2], dd = [x - w / 2 + (sk || 0), y, z + d / 2]; gl.quad(a, b, cc, dd, col, [x, y - 1, z]); };
+  const addLight = (L, extra) => {
+    const w = { id: h.id + '.l' + h.tw.lights.length, k, h, kind: L.kind, x: px + L.x, y: y0 + (L.y || 0) + (L.kind === 'brazier' ? 0.95 : 0), z: pz + L.z, r: L.r, I: L.I, pl: !!L.pl, pool: L.pool || 0, col: COL[L.kind] || '#ffa050', flick: L.kind === 'moon' || L.kind === 'rune' ? 0.06 : 0.2 };
+    Object.assign(w, extra || {}); TOWER.lights.push(w); h.tw.lights.push(w); return w;
+  };
+  const flame = (x, y, z, r, hgt, mult, c1, c2) => { gl.al = 1; gl.limb([x, y, z], [x, y + hgt, z], r, 0, 6, [c1[0] * mult, c1[1] * mult, c1[2] * mult]); gl.limb([x, y, z], [x, y + hgt * 0.62, z], r * 0.55, 0, 5, [c2[0] * mult, c2[1] * mult, c2[2] * mult]); };
+  const patch = (cx, cz, w, d, n, y) => { for (let i = 0; i < n; i++) { const xa = cx - w / 2 + i * w / n; quad(xa + w / n * 0.34, cz, w / n * 0.62, d, y, [0.3, 0.45, 0.95], 0.34, 0.55); } };
+  const mark = (fn, L, wl) => { const v0 = gl.pos.length / 3; fn(); grp.push({ v0, v1: gl.pos.length / 3, flick: wl.flick, ph: TOWER.lights.length * 5.3 + wl.x }); };
+  const lights = (F.lights || []).slice();
+  for (const b of F.bars || []) {   // แสงจันทร์ลอดลูกกรงเป็นแผ่นบนพื้น (ถ้าไม่ตกลงช่องบันได/ทางลาด)
+    const cx = b.wall === 'N' ? -b.at + 1.6 : -3.2, cz = b.wall === 'N' ? -3.4 : b.at + 1.6;
+    if (b.wall === 'N' || b.wall === 'W') lights.push({ kind: 'moon', x: cx, y: 0.1, z: cz, r: 2.2, I: 0.35, pl: false, auto: true });
+  }
+  for (const L of lights) {
+    if (L.auto && (blocked(px + L.x, pz + L.z, 1.0))) continue;
+    const wl = addLight(L), X = wl.x, Y = wl.y, Z = wl.z, fc = FL[L.kind], k1 = [fc[0], fc[1], fc[2]], k2 = [Math.min(2.6, fc[0] * 1.2), fc[1] * 1.5 + 0.3, fc[2] * 2 + 0.3];
+    if (L.kind === 'torch') {
+      const onW = L.x < -5.5;
+      g.box([X, Y - 0.25, Z], 0.1, 0.6, 0.1, wd); g.box([X, Y + 0.02, Z], 0.22, 0.12, 0.22, ir);
+      g.box(onW ? [X - 0.15, Y - 0.1, Z] : [X, Y - 0.1, Z - 0.15], onW ? 0.2 : 0.1, 0.1, onW ? 0.1 : 0.2, ir);
+      mark(() => flame(X, Y + 0.08, Z, 0.17, 0.62, 1, k1, k2), L, wl);
+    } else if (L.kind === 'brazier') {
+      for (let i = 0; i < 3; i++) { const a = i * 2.094 + 0.6; g.limb([X + Math.cos(a) * 0.34, y0, Z + Math.sin(a) * 0.34], [X + Math.cos(a) * 0.22, y0 + 0.6, Z + Math.sin(a) * 0.22], 0.05, 0.05, 5, ir); }
+      g.limb([X, y0 + 0.55, Z], [X, y0 + 0.78, Z], 0.22, 0.46, 9, ir); g.ball([X, y0 + 0.78, Z], 0.3, 0, GFX.rgb('#a2381a'), { sy: 0.35, jit: 0.2, seed: 5 });
+      SOLID.addBox(X - 0.32, X + 0.32, y0, y0 + 0.85, Z - 0.32, Z + 0.32, { house: h.id, role: 'furn', kind: 'brazier' });
+      mark(() => flame(X, y0 + 0.82, Z, 0.34, 0.95, 1, k1, k2), L, wl);
+    } else if (L.kind === 'fire') {
+      mark(() => { for (const dx of [-0.5, 0, 0.5]) flame(X + dx, Y, Z + 0.15, 0.3, 0.55 + (dx === 0 ? 0.25 : 0), 1, k1, k2); }, L, wl);
+    } else if (L.kind === 'candle') {
+      mark(() => flame(X, Y, Z, 0.045, 0.2, 1, k1, k2), L, wl);
+    } else if (L.kind === 'cauldron') {
+      mark(() => { gl.al = 0.9; gl.limb([X, y0 + 0.96, Z], [X, y0 + 0.97, Z], 0.47, 0.47, 10, [0.55, 1.5, 0.45]); flame(X, y0 + 0.1, Z + 0.25, 0.2, 0.4, 1, [2.4, 1.1, 0.3], k2); flame(X - 0.2, y0 + 0.1, Z - 0.1, 0.16, 0.34, 1, [2.4, 1.1, 0.3], k2); }, L, wl);
+    } else if (L.kind === 'rune') {
+      const R0 = L.radius || 1.8;
+      mark(() => {
+        const col = [0.28, 0.62, 1.55], y = y0 + 0.03;
+        for (let i = 0; i < 28; i++) { const a0 = i / 28 * 6.2832, a1 = (i + 0.78) / 28 * 6.2832, P = (r, a) => [X + Math.cos(a) * r, y, Z + Math.sin(a) * r]; gl.al = 0.9; gl.quad(P(R0, a0), P(R0, a1), P(R0 - 0.1, a1), P(R0 - 0.1, a0), col, [X, y - 1, Z]); gl.quad(P(R0 * 0.62, a0), P(R0 * 0.62, a1), P(R0 * 0.62 - 0.06, a1), P(R0 * 0.62 - 0.06, a0), col, [X, y - 1, Z]); }
+        for (let i = 0; i < 5; i++) { const a = i * 2.513 - 1.57, b = (i + 2) * 2.513 - 1.57; gl.al = 0.8; const ax = X + Math.cos(a) * R0 * 0.93, az = Z + Math.sin(a) * R0 * 0.93, bx = X + Math.cos(b) * R0 * 0.93, bz = Z + Math.sin(b) * R0 * 0.93; gl.box([(ax + bx) / 2, y + 0.002, (az + bz) / 2], 0.06, 0.004, Math.hypot(bx - ax, bz - az), col, Math.atan2(bx - ax, bz - az)); }
+        for (let i = 0; i < 8; i++) { const a = i / 8 * 6.2832 + 0.4; gl.al = 0.95; gl.box([X + Math.cos(a) * R0 * 0.78, y + 0.003, Z + Math.sin(a) * R0 * 0.78], 0.16, 0.005, 0.07, [0.5, 0.85, 1.7], a); }
+      }, L, wl);
+    } else if (L.kind === 'moon') {
+      const w = L.auto ? 1.1 : 2.0; mark(() => patch(X, Z, w, L.auto ? 2.0 : 2.6, 4, y0 + 0.028), L, wl);
+    }
+    if (wl.pool > 0 && L.kind !== 'moon') {   // วงแสงอุ่นบนพื้น (4 วง ซ้อนจางลง) · ทอดเข้าห้องจากไฟผนัง · ข้ามส่วนที่ตกช่องบันได/ทางลาด
+      const pc = [X + (L.x < -5.5 ? 1.3 : 0), Z + (L.z < -5.5 ? 1.3 : 0)], al = [0.2, 0.14, 0.085, 0.04], fc2 = FL[L.kind], col = [fc2[0] * 0.5, fc2[1] * 0.5, fc2[2] * 0.5];
+      mark(() => { for (let ri = 0; ri < 4; ri++) for (let s = 0; s < 16; s++) {
+        const a0 = s / 16 * 6.2832, a1 = (s + 1) / 16 * 6.2832, r0 = wl.pool * ri / 4, r1 = wl.pool * (ri + 1) / 4, am = (a0 + a1) / 2, mx = pc[0] + Math.cos(am) * (r0 + r1) / 2, mz = pc[1] + Math.sin(am) * (r0 + r1) / 2;
+        if (blocked(mx, mz, 0.05) || Math.abs(mx - px) > 5.95 || Math.abs(mz - pz) > 5.95) continue;
+        const P = (r, a) => [pc[0] + Math.cos(a) * r, y0 + 0.03 + ri * 0.0006, pc[1] + Math.sin(a) * r]; gl.al = al[ri]; gl.quad(P(r0, a0), P(r0, a1), P(r1, a1), P(r1, a0), col, [pc[0], y0 - 1, pc[1]]);
+      } }, L, wl);
+      for (const p of F.puddles || []) {   // ประกายไฟสะท้อนแอ่งน้ำ: แถบสว่างทอดจากแอ่งไปทางไฟ
+        const dx = X - (px + p.x), dz = Z - (pz + p.z), d = Math.hypot(dx, dz); if (d > L.r * 0.9 || d < 0.3) continue;
+        mark(() => { gl.al = 0.8 * Math.max(0.25, 1 - d / L.r); gl.box([px + p.x + dx / d * p.w * 0.18, y0 + 0.032, pz + p.z + dz / d * p.d * 0.18], 0.1, 0.004, p.d * 0.5, [fc2[0] * 0.8, fc2[1] * 0.8, fc2[2] * 0.8], Math.atan2(dx, dz)); }, L, wl);
+      }
+    }
+  }
 };
 
 /* ---- 40-fx.js ---- */
@@ -1750,6 +2213,7 @@ LOOK.update = (dt, snap) => {
     LOOK_NUMS.forEach((k) => { t[k] += p[k] * w; });
     hy += (s.baseH - 8) * w;
   }
+  if (TOWER.k > 0.002) TOWER.mixLook(t);   // อยู่ในหอคอย: ผสมโทนมืดอมฟ้าเทา (ไล่ค่าด้วย TOWER.k)
   if (LOOK.yFollow !== null) hy = LOOK.yFollow;
   LOOK.focusY = snap ? hy : U.damp(LOOK.focusY, hy, 6, dt);
   const a = snap ? 1 : 1 - Math.exp(-LOOK.lambda * dt);
@@ -2355,9 +2819,10 @@ BODIES._walk = (m, inp, dt, K, wx, wz) => {
   m.vx = U.damp(m.vx, wx * K.walkSpeed, K.walkAccel, dt); m.vz = U.damp(m.vz, wz * K.walkSpeed, K.walkAccel, dt); m.vy = 0;
   m.x += m.vx * dt; m.z += m.vz * dt;
   COLL.push(m, K.colR, 0); SOLID.push(m, K.colR, K.colH);
-  const g = WORLD.floorAt(m.x, m.z, m.y, K.stepUp);
+  const g = WORLD.floorAt(m.x, m.z, m.y, K.stepUp, K.tags);
   if (g === null) { m.state = 'fly'; m.vy = 0; }                       // เดินตกขอบ -> กลับเป็นบิน/ร่อน
-  else m.y = Math.abs(g - m.y) > 2.5 ? g : U.damp(m.y, g, 30, dt);     // เกาะติดพื้นตาม floorAt
+  else if (m.y - g > 2.5) { m.state = 'fly'; m.vy = 0; }                // พื้นข้างใต้ต่ำลงมากกว่า 2.5 (เช่นตะแกรงช่องเล็กบนพื้นหอคอย) -> ร่อนลงไป ไม่วาร์ป
+  else m.y = g - m.y > 2.5 ? g : U.damp(m.y, g, 30, dt);               // เกาะติดพื้นตาม floorAt
   _face(m, 12, dt, 0.3);
   m.energy = Math.min(K.energyMax, m.energy + K.regen * dt);           // ยืนบนพื้น -> พลังเวทฟื้นช้าๆ
   if (inp.up && m.energy >= K.takeoffMin && !m.sit) { m.state = 'fly'; m.vy = K.takeoffVy; m.y += 0.1; }
@@ -2390,7 +2855,7 @@ BODIES._fly = (m, inp, dt, K, wx, wz) => {
     const floor = s.baseH - s.depth * Math.pow(1 - Math.pow(t, 1.613), 0.667) - 0.5;
     if (m.y >= floor) { gT = WORLD.heightAt(s, m.x, m.z); top = gT; }
   }
-  const sf = SOLID.surfTop(m.x, m.z, m.y, 0.4); if (sf > top) top = sf;
+  const sf = SOLID.surfTop(m.x, m.z, m.y, 0.4, K.tags); if (sf > top) top = sf;
   if (top === -Infinity || m.y > top + 0.05) return;
   if (top === gT && m.y < gT - 1.5) { m.y = U.damp(m.y, gT, 10, dt); if (m.vy < 0) m.vy = 0; return; }
   m.y = top; m.vy = 0; m.vx *= 0.4; m.vz *= 0.4; m.state = 'ground';
@@ -2492,27 +2957,14 @@ MIND.update = (dt) => {
   else if (wantM && !P.ctl && tg && !P.rs && !FORM.busy()) { if (MIND.ground()) MIND.begin(tg, false); else UI.toast(MIND.groundText(), 3200); }
   if (tg) MIND.hint('near', UI.touch ? 'แตะปุ่ม "บังคับ" เพื่อบังคับจิต (หรือแตะที่เป้าหมายก่อนเพื่อเลือก)' : 'E บังคับจิต (หรือคลิกที่เป้าหมาย)');
 
-  // วาดจุดเรืองแสง + วงเวทที่ตัวเรา + แสงพุ่ง + ควันแปลงร่าง + จุดใช้
+  // วาดจุดเรืองแสง + แสงพุ่ง + ควันแปลงร่าง + จุดใช้
   GLOW.begin();
   for (const e of BODY.list) {
     if (e.state === 'gone' || e === P.ctl || !P.unlocked(e.kind.school) || P.ctl) continue;   // ระหว่างบังคับ ไม่มีจุดเรืองแสงบนตัวอื่น (เริ่มต่อไม่ได้)
     const on = e === MIND.target;
     MIND.dotAt(e, _pv, t); GLOW.add(_pv.x, _pv.y, _pv.z, on ? 2.6 : 1.5, on ? 1 : 0, 0.92 + 0.08 * Math.sin(t * 4 + e.spawn.z));
   }
-  if (P.ctl) {   // วงเวทจางๆ ที่ตัวเรา + ดวงไฟมิ้นต์ลอยเหนือเป้าหมาย
-    const rr = P.form === 'human' ? 1.1 : 0.9, N = 14;
-    for (let i = 0; i < N; i++) {
-      const a = t * 0.8 + i * Math.PI * 2 / N, x = P.x + Math.cos(a) * rr, z = P.z + Math.sin(a) * rr, g = WORLD.floorAt(x, z, P.y + 0.3, 0) ?? P.y;
-      GLOW.add(x, Math.max(g, P.y - 0.05) + 0.12, z, 0.45 + 0.1 * Math.sin(t * 5 + i * 1.7), 3, 0.55);
-    }
-    const pe = P.ctl, rt = BODY.radius(pe) * 1.7 + 0.6, cy = pe.y + BODY.top(pe) * 0.5;
-    for (let i = 0; i < 12; i++) {
-      const a = t * 0.9 + i * Math.PI * 2 / 12, x = pe.x + Math.cos(a) * rt, z = pe.z + Math.sin(a) * rt, g = WORLD.floorAt(x, z, pe.y + 0.4, 0);
-      GLOW.add(x, (g === null ? pe.y : Math.max(g, Math.min(g + 0.6, pe.y))) + 0.1, z, 0.5 + 0.15 * Math.sin(t * 5 + i * 1.7), 3, 0.9);
-    }
-    GLOW.add(pe.x, pe.y + BODY.top(pe) + 0.8 + 0.2 * Math.sin(t * 4), pe.z, 1.3, 3, 1);
-    for (let i = 0; i < 3; i++) { const a = -t * 2.1 + i * 2.1; GLOW.add(pe.x + Math.cos(a) * rt * 0.6, cy + Math.sin(t * 1.7 + i * 1.9) * BODY.top(pe) * 0.4, pe.z + Math.sin(a) * rt * 0.6, 0.3, 3, 0.7); }
-  }
+  if (P.ctl) { const pe = P.ctl; GLOW.add(pe.x, pe.y + BODY.top(pe) + 0.8 + 0.2 * Math.sin(t * 4), pe.z, 1.3, 3, 1); }   // ดวงไฟมิ้นต์ลอยเหนือเป้าหมายที่คุมอยู่ (ไม่มีวง/ลูกแสงรอบตัว)
   const fx = MIND.fx;
   if (fx) {
     fx.t += dt; const u = U.clamp(fx.t / fx.dur, 0, 1), s = U.smooth(u);
@@ -2524,7 +2976,7 @@ MIND.update = (dt) => {
     }
     if (u >= 1) { const q = (fx.t - fx.dur) / 0.28; if (q < 1) GLOW.add(to.x, to.y, to.z, 2 + 3 * q, 2, 1 - q); else MIND.fx = null; }
   }
-  FORM.draw(); SENSE.drawGlow(); WIZ.drawGlow(t); BAG.drawGlow(t);
+  FORM.draw(); SENSE.drawGlow(); WIZ.drawGlow(t); BAG.drawGlow(t); TOWER.drawGlow(t);
   const io = INTERACT.near; if (io) GLOW.add(io.x, io.y + 0.7 + 0.12 * Math.sin(t * 4), io.z, 1.1, 0, 0.95);
   GLOW.end();
   MIND.ui();
@@ -2542,7 +2994,7 @@ MIND.ui = () => {
 /* ---- 57-glow.js ---- */
 // 57-glow.js — จุดเรืองแสงบนร่างที่สิงได้ + แสงพุ่งตอนสิง/ออกจากร่าง · Points ชุดเดียว (1 draw call) · วัสดุไม่รับแสง ไม่ใช้ PointLight (ครบ 4 ดวงแล้ว)
 // GLOW.begin() -> GLOW.add(x,y,z,ขนาด(หน่วยโลก),ชนิด,alpha) หลายครั้ง -> GLOW.end() ทุกเฟรม
-// ชนิด: 4 = ควันดำ/ขนนก (แปลงร่าง) · 0 = จุดปกติ · 1 = เป้าหมาย (ใหญ่ขึ้น + วงแหวนล้อม) · 2 = ลูกแสงที่กำลังพุ่ง (แกนใหญ่สว่าง) · 3 = เครื่องหมายร่างที่สิงอยู่ (แกนขาวอุ่น + ขอบเขียวมิ้นต์ คนละโทนกับจุดส้มของร่างอื่น)
+// ชนิด: 4 = ควันดำ/ขนนก (แปลงร่าง) · 0 = จุดปกติ · 1 = เป้าหมาย (ใหญ่ขึ้น ไม่มีวงแหวน) · 2 = ลูกแสงที่กำลังพุ่ง (แกนใหญ่สว่าง) · 3 = เครื่องหมายร่างที่สิงอยู่ (แกนขาวอุ่น + ขอบเขียวมิ้นต์ คนละโทนกับจุดส้มของร่างอื่น)
 // สี: แกนครีม + ขอบส้มทอง (เข้มพอให้เห็นบนฟ้า/หญ้าสว่างตอนกลางวัน) + รัศมีเรืองจางๆ (เด่นตอนกลางคืน) · ไม่เช็กความลึก = เห็นทะลุต้นไม้/บ้านเสมอ
 const GLOW = { cap: 0, n: 0, mesh: null, pos: null, siz: null, knd: null, alp: null };
 
@@ -2561,6 +3013,10 @@ GLOW.init = (scene, cap) => {
 void main(){
   float d = length(gl_PointCoord - 0.5) * 2.0;
   if (d > 1.0) discard;
+  if (vK > 5.5) {   // ประกายไฟลอย (หอคอย): จุดส้มเล็ก แกนเหลือง
+    float c6 = 1.0 - smoothstep(0.0, 0.75, d), k6 = 1.0 - smoothstep(0.0, 0.35, d);
+    vec3 col6 = vec3(1.0, 0.5, 0.12) * c6 + vec3(1.0, 0.9, 0.55) * k6; float a6 = clamp(c6 + k6, 0.0, 1.0) * vA; gl_FragColor = vec4(col6 * vA, a6); return;
+  }
   if (vK > 4.5) {   // แสงม่วงตรึงตัว (ฉากพ่อมด): แกนขาวม่วง ขอบม่วงเข้ม รัศมีกว้าง
     float h5 = pow(1.0 - d, 2.0) * 0.7, c5 = 1.0 - smoothstep(0.3, 0.42, d), r5 = (1.0 - smoothstep(0.42, 0.55, d)) - c5;
     vec3 col5 = vec3(0.62, 0.35, 1.0) * h5 + vec3(0.55, 0.2, 0.95) * r5 + vec3(0.95, 0.88, 1.0) * c5;
@@ -2575,9 +3031,8 @@ void main(){
   float core = 1.0 - smoothstep(cr, cr + 0.08, d);
   float rim = (1.0 - smoothstep(cr + 0.08, cr + 0.17, d)) - core;
   float halo = pow(1.0 - d, 2.0) * 0.6;
-  float ring = (vK > 0.5 && vK < 1.5) ? smoothstep(0.78, 0.83, d) * (1.0 - smoothstep(0.9, 0.96, d)) : 0.0;
-  vec3 c = (me ? vec3(0.45, 1.0, 0.85) : vec3(1.0, 0.85, 0.4)) * halo + (me ? vec3(0.1, 0.9, 0.7) : vec3(1.0, 0.42, 0.06)) * rim + vec3(1.0, 0.97, 0.8) * core + vec3(1.0, 0.95, 0.7) * ring;
-  float a = clamp(halo + rim + core + ring, 0.0, 1.0) * vA;
+  vec3 c = (me ? vec3(0.45, 1.0, 0.85) : vec3(1.0, 0.85, 0.4)) * halo + (me ? vec3(0.1, 0.9, 0.7) : vec3(1.0, 0.42, 0.06)) * rim + vec3(1.0, 0.97, 0.8) * core;
+  float a = clamp(halo + rim + core, 0.0, 1.0) * vA;
   gl_FragColor = vec4(c * vA, a);
 }`,
     transparent: true, depthTest: false, depthWrite: false, blending: THREE.CustomBlending, blendEquation: THREE.AddEquation,
@@ -2614,7 +3069,7 @@ BODIES.modes.walk = (m, inp, dt) => {
     m.vx = U.damp(m.vx, wx * K.speed * run, ac, h); m.vz = U.damp(m.vz, wz * K.speed * run, ac, h);
     m.x += m.vx * h; m.z += m.vz * h;
     COLL.push(m, R, 0); SOLID.push(m, R, H);
-    const g = WORLD.floorAt(m.x, m.z, m.y, m.state === 'ground' ? su : 0.02);
+    const g = WORLD.floorAt(m.x, m.z, m.y, m.state === 'ground' ? su : 0.02, K.tags);
     if (m.state === 'ground') {
       if (g === null || m.y - g > K.stepDown) { m.state = 'air'; m.vy = 0; }          // เดินเลยขอบ / ขอบสูงชัน -> ลอย/ตก
       else {
@@ -2730,7 +3185,7 @@ FORM.why = () => {
   if (P.state !== 'ground') return 'ลงยืนบนพื้นก่อนถึงจะแปลงร่างได้';
   if (P.form === 'raven') {   // เรเวน → คน: ต้องมีที่พอ
     const K = BODIES.kinds.hero, R0 = K.radius * K.scale, H = BODIES.collH(K, 1);
-    if (SOLID.test(P.x, P.y + 0.03, P.z, R0, H, K.tags) || COLL.test(P.x, P.z, R0 * 0.9)) return 'ที่นี่แคบเกินไป แปลงเป็นคนไม่ได้';
+    if (SOLID.test(P.x, P.y + 0.03, P.z, R0, H, K.tags) || COLL.test(P.x, P.z, R0 * 0.9, (HOUSE.insideAt(P.x, P.y, P.z) || {}).cid)) return 'ที่นี่แคบเกินไป แปลงเป็นคนไม่ได้';
     for (const [dx, dz] of [[0.55, 0], [-0.55, 0], [0, 0.55], [0, -0.55]]) {
       const g = WORLD.floorAt(P.x + dx, P.z + dz, P.y + 0.3, 0);
       if (g === null || Math.abs(g - P.y) > 0.22) return 'พื้นตรงนี้ลาดหรือแคบเกินไป แปลงเป็นคนไม่ได้';
@@ -2973,16 +3428,17 @@ const SENSE = {
   LV: ['เฉยๆ', 'สงสัย', 'ค้นหา', 'ไล่'],
   list: [], events: [], hide: { state: 0, v: 0, sees: 0 }, grace: 0, c: null, _nt: 0, _ps: 0, _cd: 0, _rn: 0, silent: false, caught: 0, lastCatch: null,
 };
-const _snSee = ['small'];   // ลำแสงมองผ่านรูหนูได้ (ช่องเล็กที่ฐานผนังไม่ใช่ผนัง) แต่ไม่ผ่านผนัง/ประตู/หน้าต่างที่ปิด/เฟอร์นิเจอร์
+const _snSee = ['small', 'seethru'];   // ลำแสงมองผ่านรูหนูได้ (ช่องเล็กที่ฐานผนังไม่ใช่ผนัง) แต่ไม่ผ่านผนัง/ประตู/หน้าต่างที่ปิด/เฟอร์นิเจอร์
 
 SENSE.cy = (B) => B.y + (B.kind.top ? B.kind.top * B.kind.scale * (B.s || 1) * 0.5 : (B.kind.colH || 0.5) * 0.7);
-SENSE.range = (e) => { const S = e.kind.sense; return S.range * U.lerp(1, S.night, DN.night); };   // กลางคืนระยะมองสั้นลง
+// กลางคืนระยะมองสั้นลง · ในหอคอย: ใช้ค่าแสงตรงตัวผู้ถูกมองแทน (ในเงา = ระยะมองสั้นลง · ในวงแสง = เต็ม) ไม่ขึ้นกับกลางวัน/กลางคืน
+SENSE.range = (e) => { const S = e.kind.sense, c = SENSE.c, lt = c ? c.light : null; return lt === null || lt === undefined ? S.range * U.lerp(1, S.night, DN.night) : S.range * U.lerp(TOWER.cfg.shadowRange, 1, lt); };
 
 // สถานการณ์ของผู้ถูกมองตอนนี้
 SENSE.ctx = () => {
   const B = PLAYER.ctl || PLAYER, K = B.kind, h = HOUSE.insideAt(B.x, B.y, B.z), th = K.threat || { indoor: 0, outdoor: 0 };
   const own = !!h && h.plan.owner === 'hero', sp = Math.hypot(B.vx, B.vz), flying = K.mode === 'fly' && B.state === 'fly';
-  return { B, K, house: h, indoors: !!h && !own, own, threat: own ? 0 : (h ? th.indoor : th.outdoor), moving: sp > 0.6 || flying, flying, cy: SENSE.cy(B) };
+  return { B, K, house: h, light: TOWER.lightFor(B), indoors: !!h && !own, own, threat: own ? 0 : (h ? th.indoor : th.outdoor), moving: sp > 0.6 || flying, flying, cy: SENSE.cy(B) };
 };
 
 // คนที่อยู่ในบ้าน (แปลนบ้านมี resident) — เรียกจาก BODY.build ก่อนสร้าง crowd
@@ -3029,7 +3485,8 @@ SENSE.look = (e, ctx) => {
   if (Math.abs(ctx.cy - eye) > C.dyMax) return 0;
   if (d > S.near && (dx * Math.sin(e.yaw) + dz * Math.cos(e.yaw)) / d < Math.cos(S.ang)) return 0;
   if (!SENSE.clear(e.x, eye, e.z, B.x, ctx.cy, B.z)) return 0;
-  return (1 - C.edgeClarity * (d / range)) * (ctx.moving ? 1 : C.stillMul);
+  const q = (1 - C.edgeClarity * (d / range)) * (ctx.moving ? 1 : C.stillMul);
+  return ctx.light === null ? q : q * U.lerp(TOWER.cfg.shadowClarity, 1, ctx.light);   // ในเงา (หอคอย) ถูกเห็นชัดน้อยลง
 };
 
 // ---- เสียง ----
@@ -3269,9 +3726,9 @@ PLAYER.update = (dt) => {
 };
 
 /* ---- 63-sensefx.js ---- */
-// 63-sensefx.js — ภาพของระบบมองเห็น/ได้ยิน: กรวยสายตา + วงเสียงบนพื้น (mesh เดียว = 1 draw call ทั้งหมด) · แถบความสงสัยเหนือหัว (DOM) · มาตรวัดการซ่อน (DOM) · ควันตอนถูกจับ
-// กรวยหดตามผนังที่บัง (ยิงลำแสงตามขอบกรวย) · สี/ความทึบไล่ค่าด้วย damp ไม่ตัดฉับ · วงเสียงขยายจากจุดเกิดแล้วจาง
-const _snFx = { seg: 10, rings: 8, rseg: 28, near: 70, cone: [[0.95, 0.92, 0.6], [1.0, 0.85, 0.28], [1.0, 0.52, 0.14], [1.0, 0.2, 0.14]], alpha: [0.24, 0.32, 0.4, 0.5] };
+// 63-sensefx.js — ภาพของระบบมองเห็น/ได้ยิน: กรวยสายตา (mesh เดียว = 1 draw call) · ไม่มีภาพวงเสียงบนพื้น (เอาออก 25 พ.ย. 2569 เพราะกระตุก · เสียงยังทำงานใน 61-sense.js) · แถบความสงสัยเหนือหัว (DOM) · มาตรวัดการซ่อน (DOM) · ควันตอนถูกจับ
+// กรวยหดตามผนังที่บัง (ยิงลำแสงตามขอบกรวย) · สี/ความทึบไล่ค่าด้วย damp ไม่ตัดฉับ
+const _snFx = { seg: 10, near: 70, cone: [[0.95, 0.92, 0.6], [1.0, 0.85, 0.28], [1.0, 0.52, 0.14], [1.0, 0.2, 0.14]], alpha: [0.24, 0.32, 0.4, 0.5] };
 const _snHide = [{ t: 'ซ่อนดี', c: '#5fd08a' }, { t: 'เสี่ยง', c: '#f0c23c' }, { t: 'ถูกเห็น', c: '#ff5a4a' }];
 const _snHideSvg = [
   '<svg viewBox="0 0 24 24"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z"/><path d="M4 20L20 4"/></svg>',
@@ -3289,17 +3746,16 @@ SENSE.CSS = `
 `;
 
 SENSE.buildFx = (scene) => {
-  const F = _snFx, nC = SENSE.list.length, cV = F.seg + 2, rV = (F.rseg + 1) * 2, total = nC * cV + F.rings * rV;
+  const F = _snFx, nC = SENSE.list.length, cV = F.seg + 2, total = nC * cV;
   const pos = new Float32Array(total * 3), col = new Float32Array(total * 4), idx = [];
   for (let k = 0; k < nC; k++) { const v0 = k * cV; for (let i = 0; i < F.seg; i++) idx.push(v0, v0 + 1 + i, v0 + 2 + i); }
-  for (let r = 0; r < F.rings; r++) { const vb = nC * cV + r * rV; for (let i = 0; i < F.rseg; i++) { const a = vb + 2 * i; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); } }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.BufferAttribute(pos, 3).setUsage(THREE.DynamicDrawUsage));
   g.setAttribute('color', new THREE.BufferAttribute(col, 4).setUsage(THREE.DynamicDrawUsage));
   g.setIndex(idx);
   const m = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false, side: THREE.DoubleSide, fog: false, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 });
   const mesh = new THREE.Mesh(g, m); mesh.frustumCulled = false; mesh.renderOrder = 3; scene.add(mesh);
-  SENSE.fx = { mesh, pos, col, nC, cV, rV, total, drawn: 0, rings: 0 };
+  SENSE.fx = { mesh, pos, col, nC, cV, total, drawn: 0 };
   for (let i = 0; i < total; i++) pos[i * 3 + 1] = -9999;
   // DOM: แถบความสงสัยต่อคน + มาตรวัดการซ่อน
   const st = document.createElement('style'); st.textContent = SENSE.CSS; document.head.appendChild(st);
@@ -3327,24 +3783,6 @@ SENSE.setCone = (e, base) => {
     set(1 + i, x, y, z, s.ca * 0.22);
   }
 };
-SENSE.setRings = () => {
-  const F = _snFx, FX = SENSE.fx, ev = SENSE.events, P = FX.pos, C = FX.col; let used = 0;
-  for (let r = 0; r < F.rings; r++) {
-    const vb = FX.nC * FX.cV + r * FX.rV, e = ev[ev.length - 1 - r];
-    if (!e || e.r <= 0) { for (let i = 0; i < FX.rV; i++) { P[(vb + i) * 3 + 1] = -9999; C[(vb + i) * 4 + 3] = 0; } continue; }
-    used++;
-    const u = e.t / e.dur, rad = e.r * (1 - (1 - u) * (1 - u)), w = Math.min(0.4, rad), al = (1 - u) * 0.6;
-    for (let i = 0; i <= F.rseg; i++) {
-      const a = i / F.rseg * Math.PI * 2, cx = Math.cos(a), sz = Math.sin(a);
-      for (let q = 0; q < 2; q++) {
-        const rr = q ? rad : Math.max(0, rad - w), x = e.x + cx * rr, z = e.z + sz * rr, f = WORLD.floorAt(x, z, e.y0 + 0.3, 0.3), y = (f !== null && Math.abs(f - e.y0) < 1.6 ? f : e.y0) + 0.12, v = vb + 2 * i + q, o = v * 3, c = v * 4;
-        P[o] = x; P[o + 1] = y; P[o + 2] = z; C[c] = 0.55; C[c + 1] = 0.92; C[c + 2] = 1; C[c + 3] = q ? al : al * 0.15;
-      }
-    }
-  }
-  FX.rings = used;
-};
-
 // ทุกเฟรม (หลังกล้องอัปเดต)
 SENSE.draw = (dt) => {
   const FX = SENSE.fx; if (!FX) return;
@@ -3368,7 +3806,7 @@ SENSE.draw = (dt) => {
       } else if (s.on) { s.on = false; s.el.style.display = 'none'; }
     } else if (s.on) { s.on = false; s.el.style.display = 'none'; }
   });
-  FX.drawn = drawn; SENSE.setRings();
+  FX.drawn = drawn;
   const wc = BODY.crowds.wizard, we = WIZ.wiz;   // พ่อมดคนเดียวมี crowd ของตัวเอง (8 ชิ้น = 8 draw call): ซ่อนเมื่ออยู่ไกลจากกล้อง
   if (wc && we) { const vis = Math.hypot(we.x - fx.x, we.z - fx.z) < 48 && Math.abs(we.y - (LOOK.focusY || 0)) < 40; for (const pt of wc.parts) pt.im.visible = vis; }
   const g = FX.mesh.geometry; g.attributes.position.needsUpdate = true; g.attributes.color.needsUpdate = true;
@@ -3414,7 +3852,7 @@ BAG.spawns = [
   { uid: 'cheese.farm', kind: 'cheese', slot: 'farm.slot1' },
   { uid: 'sausage.carpenter', kind: 'sausage', slot: 'carpenter.slot2' },
   { uid: 'loaf.market', kind: 'loaf', slot: 'stall1' },
-  { uid: 'pie.wizard', kind: 'pie', slot: 'wizard.slot1', trigger: 'wizard' },
+  { uid: 'pie.wizard', kind: 'pie', slot: 'tower1.slot1', trigger: 'wizard' },
 ];
 
 // ตัวพร็อกซีของ GB ที่ขยับทุกจุดตามตำแหน่งของ (ให้ของทุกชิ้นรวมเป็น mesh เดียว = 1 draw call)
@@ -3538,12 +3976,12 @@ BAG.drawGlow = (t) => {
 
 /* ---- 65-wizard.js ---- */
 // 65-wizard.js — WIZ: ฉากพ่อมดจับ = จบชิ้นทดลอง (M5 ครึ่งหลัง)
-// เริ่มเมื่อเก็บพายบนโต๊ะในห้องพ่อมด (BAG.spawns trigger 'wizard'): ตัวเราถูกตรึงกลางอากาศด้วยแสงม่วง → กล้องเลื่อนไปที่พ่อมด → บทพูด 4 บรรทัด → จอจบ + ปุ่มเล่นใหม่ (ล้างเซฟ)
+// เริ่มเมื่อเก็บพายบนโต๊ะครัวชั้น 1 ของหอคอย (BAG.spawns trigger 'wizard' ช่อง tower1.slot1): ตัวเราถูกตรึงกลางอากาศด้วยแสงม่วง → กล้องเลื่อนไปที่พ่อมด → บทพูด 4 บรรทัด → จอจบ + ปุ่มเล่นใหม่ (ล้างเซฟ)
 // ข้ามได้: คลิก/แตะที่ไหนก็ได้ · Space/Enter = ไปบรรทัดถัดไป (ถ้ายังพิมพ์ไม่จบ = พิมพ์ให้จบก่อน) · ปุ่ม "ข้าม" / Esc = ไปจอจบเลย
 // เฟส: bind (แสงม่วงรัดตัว) → pan (กล้องไปที่พ่อมด) → talk (บทพูด) → end (จอจบ)
 const WIZ = { lock: false, phase: null, t: 0, line: 0, chars: 0, lines: [], wiz: null, el: null, cam: false, endAt: 0, ended: false, tBind: 1.3, tPan: 1.4, cps: 40 };
 WIZ.script = (hasBread) => [
-  'หึ... นกดำตัวหนึ่ง กล้าบินเข้ามาจิกของบนโต๊ะข้าถึงห้องใต้หลังคาเชียวหรือ',
+  'หึ... นกดำตัวหนึ่ง กล้าบินลงมาจิกพายบนโต๊ะครัวของข้า ทั้งที่ต้องผ่านมาตั้งห้าชั้นเชียวหรือ',
   hasBread ? 'ขนมปังในกระเป๋าของเจ้านั่น ขโมยมาจากเตาของคนทำขนมปังใช่ไหม กลิ่นหอมลอยมาถึงนี่แล้ว' : 'แสงม่วงนี้ไม่มีใครดิ้นหลุดหรอก... แต่เดี๋ยวก่อน นกตัวนี้ไม่ใช่นกธรรมดา',
   'ข้ารู้แล้ว เจ้าคือนักควบคุม — คนที่ส่งจิตไปอยู่ในสัตว์และสิ่งของได้ และเก็บความลับนี้ไว้ไม่ให้ใครรู้มานานสินะ',
   'ข้าจะเก็บความลับให้ แต่เจ้าต้องทำงานให้ข้าแทน... อย่าคิดหนีเชียว ข้ารู้เสมอว่าเจ้าอยู่ที่ไหน',
@@ -3803,7 +4241,7 @@ const CAM = {
   span: 105, spanT: 105, user: 105, auto: 0, minSpan: 36, maxSpan: 620, dist: 520,
   tx: 0, tz: 0, ty: 0, _G: 0, lead: 0.25, lambda: 4.5,
   zlam: 9,                      // ความไวการไล่ค่าซูม (เปลี่ยนเป้าหมาย/ร่างแล้วช่วงซูมเปลี่ยน = ลดชั่วคราวให้ไล่ช้าๆ)
-  inK: 0, inZoom: 0.3,          // ข้างในบ้าน: ซูมเข้า 30%
+  inK: 0, inZoom: 0.3, zIn: 0.3,          // ข้างในบ้าน: ซูมเข้า 30%
   autoMax: 0.45, autoAlt: 40,   // บินสูง autoAlt หน่วยเหนือพื้น -> ซูมออกเพิ่ม autoMax (45%) · ไม่เกินช่วงซูมของชนิดร่าง
   bias: 0.5,                    // จุดมองอยู่สัดส่วนนี้ระหว่างพื้นข้างใต้ (0) กับตัวนก (1)
   dir: new THREE.Vector3(1, 1, 1).normalize(),
@@ -3836,9 +4274,10 @@ CAM.follow = (dt, snap) => {
   CAM._G = snap ? G : U.damp(CAM._G, G, 5, dt);
   CAM.tx = P.x + P.vx * CAM.lead; CAM.tz = P.z + P.vz * CAM.lead; CAM.ty = U.lerp(CAM._G, P.y, CAM.bias);
   CAM.auto = CAM.autoMax * U.smooth(Math.max(0, P.y - CAM._G) / CAM.autoAlt);
-  const ins = HOUSE.insideAt(P.x, P.y, P.z) ? 1 : 0;
+  const ih = HOUSE.insideAt(P.x, P.y, P.z), ins = ih ? 1 : 0;
+  if (ih) CAM.zIn = R.w < R.h && ih.plan.inZoomP !== undefined ? ih.plan.inZoomP : (ih.plan.inZoom !== undefined ? ih.plan.inZoom : CAM.inZoom);   // ห้องกว้าง (หอคอย) ซูมเข้าน้อยกว่าบ้านเล็ก · จอตั้งซูมออกแทน (ห้องกว้างกว่าจอ)
   CAM.inK = snap ? ins : U.damp(CAM.inK, ins, 3.5, dt);
-  CAM.spanT = U.clamp(CAM.user * (1 + CAM.auto) * (1 - CAM.inZoom * CAM.inK), CAM.minSpan, CAM.maxSpan);
+  CAM.spanT = U.clamp(CAM.user * (1 + CAM.auto) * (1 - CAM.zIn * CAM.inK), CAM.minSpan, CAM.maxSpan);
   LOOK.yFollow = CAM.ty;
   if (snap) { LOOK.focus.x = CAM.tx; LOOK.focus.z = CAM.tz; CAM.span = CAM.spanT; }
 };
@@ -4032,6 +4471,7 @@ function frame(now) {
   BAG.update();
   INTERACT.update();
   HOUSE.update(dt, PLAYER.camBody());
+  TOWER.update(dt);
   MIND.update(dt);
   INTERACT.ui();
   for (const r of [RIG.hero, RIG.raven]) {   // ตัวเราแสดงเฉพาะร่างปัจจุบัน (นั่งอยู่ที่เดิมตอนบังคับจิต)
@@ -4045,6 +4485,7 @@ function frame(now) {
   LOOK.update(dt);
   LOOK.fitShadow(LOOK.focus.x, LOOK.focusY, LOOK.focus.z, CAM.viewW, CAM.viewH);
   FX.update();
+  TOWER.updateLights(dt);
   WEATHER.update();
   UI.update(dt);
   R.render();
@@ -4101,7 +4542,7 @@ Object.defineProperty(DBG, 'worldItems', { enumerable: true, get: () => BAG.worl
 Object.defineProperty(DBG, 'wary', { enumerable: true, get: () => HOUSE.list.map((h) => ({ id: h.id, wary: _f2(h.wary || 0), windows: h.ops.filter((o) => o.kind === 'window').map((o) => o.id + ':' + (o.open ? 'open' : 'closed')).join(',') })) });
 Object.defineProperty(DBG, 'scene', { enumerable: true, get: () => ({ lock: WIZ.lock, phase: WIZ.phase, line: WIZ.line, chars: Math.floor(WIZ.chars), lines: WIZ.lines.length, cam: WIZ.cam, ended: WIZ.ended, saved: !!SAVE.read().ended, wizard: WIZ.wiz ? { x: _f2(WIZ.wiz.x), y: _f2(WIZ.wiz.y), z: _f2(WIZ.wiz.z), yaw: _f2(WIZ.wiz.yaw) } : null }) });
 Object.defineProperty(DBG, 'events', { enumerable: true, get: () => SENSE.events.map((e) => ({ kind: e.kind, r: e.r, t: _f2(e.t), x: _f2(e.x), z: _f2(e.z) })) });
-Object.defineProperty(DBG, 'senseCfg', { enumerable: true, get: () => ({ cfg: SENSE.cfg, drawn: SENSE.fx ? SENSE.fx.drawn : 0, rings: SENSE.fx ? SENSE.fx.rings : 0, caught: SENSE.caught, grace: _f2(SENSE.grace), last: SENSE.lastCatch, night: _f2(DN.night) }) });
+Object.defineProperty(DBG, 'senseCfg', { enumerable: true, get: () => ({ cfg: SENSE.cfg, drawn: SENSE.fx ? SENSE.fx.drawn : 0, caught: SENSE.caught, grace: _f2(SENSE.grace), last: SENSE.lastCatch, night: _f2(DN.night) }) });
 DBG.setForm = (f) => { const P = PLAYER; if (P.ctl) MIND.release('user'); P.setForm(f, true); P.state = 'ground'; P.rs = null; return P.form; };
 DBG.putBody = (id, x, y, z, yaw) => { const e = BODY.byId[id]; if (!e) return null; e.x = x; e.z = z; e.y = y; e.vx = e.vy = e.vz = 0; e.state = 'ground'; if (yaw !== undefined) e.yaw = yaw; if (e.ai) { e.ai.mode = 'rest'; e.ai.t = 5; } return { x: e.x, y: e.y, z: e.z, yaw: _f2(e.yaw) }; };
 DBG.putItem = (uid, x, y, z) => { const it = BAG.byUid[uid]; if (!it) return null; it.x = x; it.y = y; it.z = z; BAG.remesh(); it.house = (HOUSE.insideAt(x, y, z) || {}).id || null; for (const o of INTERACT.list) if (o.id === 'item.' + uid || o.id === 'item.' + uid + '.big') { o.x = x; o.y = y; o.z = z; o.inHouse = it.house || undefined; } return it.house; };
@@ -4111,7 +4552,7 @@ DBG.fillBag = () => { let n = 0; while (DBG.addItem('bread')) n++; return n; };
 DBG.noise = (r, loud) => { const B = PLAYER.ctl || PLAYER; SENSE.emit(B.x, B.y, B.z, r, 'dbg', !!loud); return SENSE.events.length; };
 DBG.catchNow = (id) => { const e = BODY.byId[id]; if (!e) return null; SENSE.grace = 0; SENSE.catch(e, SENSE.c || SENSE.ctx()); return SENSE.lastCatch; };
 DBG.setSus = (id, v) => { const e = BODY.byId[id]; if (!e || !e.sus) return null; e.sus.v = v; e.sus.heardT = e.sus.seenT = 99; return e.sus.v; };
-DBG.seeInfo = (id) => { const e = BODY.byId[id]; if (!e || !e.sus) return null; const c = SENSE.ctx(); return { clarity: _f2(SENSE.look(e, c)), range: _f2(SENSE.range(e)), threat: _f2(c.threat), ang: e.kind.sense.ang, night: _f2(DN.night) }; };
+DBG.seeInfo = (id) => { const e = BODY.byId[id]; if (!e || !e.sus) return null; const c = SENSE.c = SENSE.ctx(); return { light: c.light === null ? null : _f2(c.light), dist: _f2(Math.hypot(c.B.x - e.x, c.B.z - e.z)), clarity: _f2(SENSE.look(e, c)), range: _f2(SENSE.range(e)), threat: _f2(c.threat), ang: e.kind.sense.ang, night: _f2(DN.night) }; };
 DBG.sceneAdvance = () => { WIZ.advance(); return DBG.scene; };
 DBG.stats = () => ({ calls: DBG.calls, maxCalls: DBG.maxCalls, tris: DBG.tris, lights: DBG.lights, pointLights: R.scene.children.filter((o) => o.isPointLight).length });
 DBG.simSense = (sec) => { const n = Math.round(sec / 0.05); for (let i = 0; i < n; i++) SENSE.update(0.05); return DBG.wary; };   // เดินเวลาของระบบความสงสัย/บ้านระวังตัวล้วนๆ ไปข้างหน้า (ใช้โค้ดจริงของ SENSE.update) ทดสอบการหายเองตามเวลา
@@ -4126,6 +4567,25 @@ DBG.drawInfo = () => {   // นับวัตถุที่จะถูกว�
   });
   return o;
 };
+// ---- หอคอยพ่อมด (M5.5) ----
+// tower = สถานะ: ชั้นของตัวที่คุม · ค่าแสงที่ตัวเรา · ความจางรายชั้น · PointLight ที่ถือไฟไหน · towerLinks = ทางเชื่อม (พิกัดโลก จุดเท้า/จุดปลายบน) · towerPut/towerPutBody = วางตัวที่ชั้น k (x,z เทียบกลางห้อง)
+const _towerC = () => { const h = HOUSE.byId.tower1; return [h.x, h.z]; };
+Object.defineProperty(DBG, 'tower', { enumerable: true, get: () => {
+  const B = PLAYER.camBody(), cy = SENSE.cy(B), lt = TOWER.lightFor(B);
+  return { floor: TOWER.cur, k: _f2(TOWER.k), lightHere: lt === null ? null : _f2(lt), pointLights: R.scene.children.filter((o) => o.isPointLight).length,
+    floors: HOUSE.list.filter((h) => h.plan.tower).map((h) => ({ k: h.plan.tower.k, base: _f2(h.base), flv: _f2(h.flv), fade: _f2(h.fade), shell: h.shell.visible, fadeMesh: h.fadeMesh.visible, glow: h.tw && h.tw.glow ? h.tw.glow.visible : null })),
+    slots: (TOWER.slots || []).map((s) => ({ light: s.id ? s.id.id : null, kind: s.id ? s.id.kind : null, a: _f2(s.a), I: _f2(s.o.l.intensity), x: _f2(s.o.l.position.x), y: _f2(s.o.l.position.y), z: _f2(s.o.l.position.z) })) };
+} });
+DBG.towerLightAt = (x, y, z) => _f2(TOWER.lightAt(x, y, z));
+DBG.towerLights = () => TOWER.lights.map((L) => ({ id: L.id, k: L.k, kind: L.kind, x: _f2(L.x), y: _f2(L.y), z: _f2(L.z), r: L.r, I: L.I, pl: L.pl }));
+DBG.towerLinks = () => TOWER.links.map((L) => { const [cx, cz] = _towerC(), r = L.rect, lo = TOWER.floorTop(L.from), hi = TOWER.floorTop(L.to);
+  return { id: L.id, kind: L.kind, from: L.from, to: L.to, gate: L.gate ? { locked: !!L.gate.locked } : null, blocker: L.blocker ? L.blocker.on : null,
+    foot: [_f2(cx + (r[0] + r[1]) / 2), _f2(lo), _f2(cz + r[3] - 0.4)], top: [_f2(cx + (r[0] + r[1]) / 2), _f2(hi), _f2(cz + r[2] + 0.4)], rect: [cx + r[0], cx + r[1], cz + r[2], cz + r[3]].map(_f2),
+    hatchCenter: L.kind === 'hatch' ? [_f2(cx + (r[0] + r[1]) / 2), _f2(hi), _f2(cz + (r[2] + r[3]) / 2)] : null }; });
+DBG.towerPut = (k, x, z, form) => { const [cx, cz] = _towerC(); if (form) DBG.setForm(form); return DBG.setPlayer(cx + x, TOWER.floorTop(k) + 0.02, cz + z); };
+DBG.towerPutBody = (id, k, x, z, yaw) => { const [cx, cz] = _towerC(); return DBG.putBody(id, cx + x, TOWER.floorTop(k) + 0.02, cz + z, yaw); };
+DBG.towerFloorOf = (id) => { const e = id ? BODY.byId[id] : PLAYER.camBody(), h = e && HOUSE.insideAt(e.x, e.y, e.z); return h && h.plan.tower ? h.plan.tower.k : 0; };
+DBG.towerGate = (id, locked) => TOWER.setGate(id, locked);   // สลับประตูกั้นของทางเชื่อมที่มี gate ในข้อมูล (คืนสถานะ blocker.on · null = ไม่มี gate)
 
 })();</script>
 </body>
