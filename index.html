@@ -1019,7 +1019,7 @@ WORLD.floorAt = (x, z, y, step, tags) => {
 /* ---- 35-house.js ---- */
 // 35-house.js — บ้านที่เข้าได้: สร้างจาก "แปลน" (ข้อมูล) ตัวสร้างเดียว · ห้องจริง ผนังชนได้ ช่องเปิด 4 แบบ เฟอร์นิเจอร์ หลังคาจางเมื่ออยู่ข้างใน
 // แปลน = { id, x, z (กลางห้อง), W (กว้างตามแกน x), D (ลึกตามแกน z) (ขนาดด้านใน), wallH, colors:{wall,roof,timber}, ridge,
-//   doors:[{wall,at,w,h,locked}], windows:[{wall,at,w,h,sill,open}], vents:[{wall,at,w,v0,v1}] (ช่องชายคา), holes:[{wall,at,w,h}] (รูหนูที่ฐานผนัง),
+//   hatches:[{wall,at,w,v0,v1}] (บานระบายควันสูง · เปิดด้วยโค้ดของแปลน), doors:[{wall,at,w,h,locked}], windows:[{wall,at,w,h,sill,open}], vents:[{wall,at,w,v0,v1}] (ช่องชายคา), holes:[{wall,at,w,h}] (รูหนูที่ฐานผนัง),
 //   furniture:[{kind,x,z,rot?}], chimney:{x}, lift? (ยกพื้นสูงจากดิน), owner? ('hero' = บ้านของตัวเอก ไม่น่าสงสัย), resident? { kind, at:[x,z], yaw, tint } (คนที่อยู่ในบ้าน), exit? {x,z} (จุดที่ถูกไล่ออกมา เทียบกลางบ้าน) }   wall = 'N'|'S'|'E'|'W' · at = ตำแหน่งตามแนวผนังเทียบกลางผนัง (มองจากข้างนอก ซ้าย→ขวา = +)
 // บ้านทุกหลังแกนตรง (ไม่หมุน): กล้องไอโซเมตริกมองจากทิศ +x,+z ⇒ ผนัง S (+z) กับ E (+x) บังภายใน → ผนังสองด้านนั้นกับหลังคา/เพดาน/ปล่องอยู่ใน "ชุดที่จางได้" (fade)
 // ช่องเปิดแต่ละช่อง (op) = { id, kind:'door'|'window'|'vent'|'hole', open, a (0..1 ไล่ค่า), blocker (กล่อง SOLID ที่ปิดช่อง) }
@@ -1069,6 +1069,7 @@ HOUSE.build = (plan, scene) => {
   (plan.windows || []).forEach((d, i) => defs.push({ kind: 'window', id: 'w' + i, wall: d.wall, u0: d.at - d.w / 2, u1: d.at + d.w / 2, v0: d.sill || 1.0, v1: (d.sill || 1.0) + (d.h || 1.2), open: !!d.open }));
   (plan.vents || []).forEach((d, i) => defs.push({ kind: 'vent', id: 'v' + i, wall: d.wall, u0: d.at - d.w / 2, u1: d.at + d.w / 2, v0: d.v0 || 2.0, v1: d.v1 || 3.0, open: true }));
   (plan.bars || []).forEach((d, i) => defs.push({ kind: 'bars', id: 'b' + i, wall: d.wall, u0: d.at - d.w / 2, u1: d.at + d.w / 2, v0: d.sill || 1.2, v1: (d.sill || 1.2) + (d.h || 1.4), open: false }));   // ลูกกรง: มองทะลุได้ ผ่านไม่ได้
+  (plan.hatches || []).forEach((d, i) => defs.push({ kind: 'hatch', id: 'k' + i, wall: d.wall, u0: d.at - d.w / 2, u1: d.at + d.w / 2, v0: d.v0 || 2.4, v1: d.v1 || 3.2, open: false }));   // บานระบายควันบานพับล่าง (ร้านขนมปัง): ตัวกั้นปิดช่อง · ภาพบาน/เชือก/การเปิด = 37-bakery.js
   (plan.holes || []).forEach((d, i) => defs.push({ kind: 'hole', id: 'h' + i, wall: d.wall, u0: d.at - d.w / 2, u1: d.at + d.w / 2, v0: -0.4, v1: d.h || 0.5, open: true }));
   h.ops = defs;
   for (const o of defs) {   // ตำแหน่งกลางช่อง (ผิวนอก) + จุดหน้า/หลังช่อง (ให้ __dbg ใช้นำทาง)
@@ -1345,7 +1346,7 @@ HOUSE.stoneRect = (g, wbox, vis, wall, u0, u1, v0, v1, col) => {
 
 /* ---- 36-interact.js ---- */
 // 36-interact.js — INTERACT: ระบบ "ใช้" ทั่วไป (คอม F · มือถือปุ่มมือ) · ข้อมูลล้วน: ตำแหน่ง รัศมี ใครใช้ได้ (ตามแท็กของชนิดร่าง) และ action
-// inHouse = id บ้าน: ใช้ได้เฉพาะเมื่ออยู่ข้างในห้องนั้น
+// inHouse = id บ้าน: ใช้ได้เฉพาะเมื่ออยู่ข้างในห้องนั้น · hold = วินาทีที่ต้องกดค้างปุ่มใช้ถึงจะทำ (มีแถบความคืบหน้าเล็กเหนือตัว · ปล่อยก่อนครบ = เริ่มนับใหม่) · onHold?(prog 0..1, dt) เรียกทุกเฟรมที่กดค้าง
 // INTERACT.add({ id, x, y, z, r (รัศมีแนวราบ), dy (ต่างสูงได้), tags: [แท็กที่ใช้ได้ อย่างน้อยหนึ่ง], can?: () => bool, text: () => ข้อความป้าย, run: () => ทำ, hint? })
 // ตัวที่ถูกถาม = ตัวที่ผู้เล่นคุมอยู่ตอนนี้ (เป้าหมายที่บังคับจิตอยู่ หรือถ้าไม่มีก็ตัวเรา) · ช่วงที่ 2 เพิ่มของให้หยิบ/ขโมยผ่านตัวนี้ได้
 const INTERACT = { list: [], near: null, _x: 0 };
@@ -1357,24 +1358,217 @@ INTERACT.reach = (o, m) => {
   const d = Math.hypot(m.x - o.x, m.z - o.z);
   return d <= o.r && Math.abs((m.y + 0.3) - o.y) <= (o.dy || 1.5) ? d : -1;
 };
-INTERACT.update = () => {
+INTERACT.update = (dt) => {
   const B = INTERACT.who(), tags = B.kind.tags; let best = null, bd = 1e9;
-  if (!PLAYER.rs && !FORM.busy()) for (const o of INTERACT.list) {
+  if (!PLAYER.rs && !FORM.busy() && !WIZ.lock) for (const o of INTERACT.list) {
     if (!o.tags.some((t) => tags.indexOf(t) >= 0) || (o.can && !o.can())) continue;
     if (o.inHouse && (HOUSE.insideAt(B.x, B.y, B.z) || {}).id !== o.inHouse) continue;   // จุดด้านในต้องอยู่ในห้องจริง (ไม่ใช่อยู่นอกผนัง)
     const d = INTERACT.reach(o, B); if (d >= 0 && d < bd) { bd = d; best = o; }
   }
   const old = INTERACT.near;
-  if (old && old !== best && best === null && INTERACT.reach(old, B) >= 0 && (!old.can || old.can()) && old.tags.some((t) => tags.indexOf(t) >= 0) && INTERACT.reach(old, B) < old.r * 1.15) best = old;   // กันป้ายกะพริบที่ขอบระยะ
+  if (old && old !== best && best === null && !WIZ.lock && INTERACT.reach(old, B) >= 0 && (!old.can || old.can()) && old.tags.some((t) => tags.indexOf(t) >= 0) && INTERACT.reach(old, B) < old.r * 1.15) best = old;   // กันป้ายกะพริบที่ขอบระยะ
+  if (old && old !== best) old.prog = 0;   // เดินออกจากจุดที่กำลังกดค้าง = เริ่มนับใหม่
   INTERACT.near = best;
-  if (INPUT.take('use') && best) { best.run(); if (!best.hint) MIND.hint('use', UI.touch ? 'ปุ่มมือ = ใช้' : 'F = ใช้'); }
+  if (best && best.hold) {   // จุดที่ต้องกดค้าง: ไม่ใช้การกดครั้งเดียว
+    INPUT.take('use');
+    if (INPUT.isHeld('use') && !WIZ.lock) {
+      best.prog = (best.prog || 0) + (dt || 0.016) / best.hold;
+      if (best.onHold) best.onHold(Math.min(1, best.prog), dt);
+      if (best.prog >= 1) { best.prog = 0; best.run(); }
+    } else best.prog = 0;
+  } else if (INPUT.take('use') && best) { best.run(); if (!best.hint) MIND.hint('use', UI.touch ? 'ปุ่มมือ = ใช้' : 'F = ใช้'); }
 };
 // ป้าย "F ใช้ …" ลอยเหนือจุดใช้
 INTERACT.ui = () => {
-  const o = INTERACT.near;
-  if (!o) { UI.setUse(null); return; }
+  const o = INTERACT.near, bar = INTERACT.bar || INTERACT.mkBar();
+  if (!o) { UI.setUse(null); bar.el.style.display = 'none'; return; }
+  const pg = o.hold && o.prog > 0 ? Math.min(1, o.prog) : 0;   // แถบความคืบหน้าเล็กเหนือตัวที่กำลังทำ (แบบเดียวกับแถบความสงสัย ไม่ใช่วงบนพื้น)
+  if (pg > 0) {
+    const B = INTERACT.who(), v = INTERACT._w || (INTERACT._w = new THREE.Vector3()); v.set(B.x, B.y + (B.kind.top || 1) * B.kind.scale * (B.s || 1) + 0.55, B.z).project(R.cam);
+    bar.el.style.display = 'block'; bar.el.style.left = ((v.x * 0.5 + 0.5) * R.w).toFixed(1) + 'px'; bar.el.style.top = ((-v.y * 0.5 + 0.5) * R.h).toFixed(1) + 'px'; bar.fill.style.transform = 'scaleX(' + pg.toFixed(3) + ')';
+  } else bar.el.style.display = 'none';
   const v = INTERACT._v || (INTERACT._v = new THREE.Vector3()); v.set(o.x, o.y + 1.1, o.z).project(R.cam);
   UI.setUse((UI.touch ? '' : 'F · ') + o.text(), (v.x * 0.5 + 0.5) * R.w, (-v.y * 0.5 + 0.5) * R.h);
+};
+INTERACT.mkBar = () => {
+  const el = document.createElement('div'); el.className = 'sb'; el.style.borderColor = '#ffd86a'; el.innerHTML = '<i style="background:#ffd86a"></i>'; UI.root.appendChild(el);
+  return (INTERACT.bar = { el, fill: el.firstChild });
+};
+
+/* ---- 37-bakery.js ---- */
+// 37-bakery.js — ร้านขนมปัง (บ้านคนทำขนมปัง id `baker`) ขยายเป็น 3 ส่วน: หน้าร้าน · ห้องเตาอบ (ตะวันตก-เหนือ) · ห้องเก็บแป้ง (ตะวันออก-เหนือ)
+// พิกัดในไฟล์นี้เป็น "เทียบกลางร้าน" (lx,lz): ร้านกว้าง 10 (lx -5..5) ลึก 12 (lz -6..6) · ผนัง S อยู่ lz=+6 (ประตู/รูหนู) · ผนังกั้นตามแกน x ที่ lz=0 · ผนังกั้นตามแกน z ที่ lx=0 (เฉพาะส่วนหลัง)
+// ที่หลบ: ใต้ชั้นวาง (ช่องสูง 0.3 หนูลอดได้) · หลังกองกระสอบ · คานบน (เรเวนยืนได้) · ชั้นสูง/กระสอบบังกรวยสายตา (ใช้ SENSE.clear เดิม) · มุมห้องแป้งมืด (plan.lightAt → TOWER.lightFor)
+// หน้าต่างระบายควัน (hatch): บานพับล่าง อยู่สูงบนผนัง W เหนือห้องเตาอบ · เชือกผูกตะขอระดับพื้น · หนูกดค้าง F ~2.5 วิ = กัดเชือก → บานตกเปิดค้าง (เซฟ) · เช้า 6:00-9:00 คนทำขนมปังเปิดเองตอนไปถึงเตา แล้วปิดตอนสาย
+const BAKERY = { id: 'baker', S: { cut: false, slack: false, noticed: false, want: false, pend: 0, gn: 0 }, h: null, ho: null, e: null, cfg: { biteSec: 2.5, open0: 6, open1: 9, fall: 1.5, ovenR: 2.4, lateOpen: 45 } };
+const _bkP = [[0.5, 1.7], [-1.7, 1.0], [-1.7, -1.0], [-2.4, -3.8], [-1.0, -2.9], [1.0, -2.9], [2.0, -1.2], [3.1, -0.9], [3.1, 1.0]];   // เส้นทางเดินวนของคนทำขนมปัง (จุดที่ 3 = หน้าเตาอบ)
+BAKERY.oven = [-2.4, -3.8];
+
+BAKERY.plan = () => ({
+  id: 'baker', x: 12, z: -9, W: 10, D: 12, wallH: 3.8, ridge: 3.6, colors: { wall: '#ecdfc2', roof: '#b5523b', timber: '#6b4a2f', floor: '#9a7a52', door: '#7a5232' },
+  doors: [{ wall: 'S', at: 0, w: 1.3, h: 2.2, locked: true }], windows: [{ wall: 'S', at: -3.4, w: 1.8, h: 1.2, sill: 1.0 }, { wall: 'E', at: -3.4, w: 1.6, h: 1.2, sill: 1.0 }],
+  holes: [{ wall: 'S', at: 4.2, w: 0.7 }], hatches: [{ wall: 'W', at: -3.2, w: 1.4, v0: 2.5, v1: 3.5 }], chimney: { x: -3.0 },
+  furniture: [
+    { kind: 'counter', x: 0, z: 3.0 }, { kind: 'breadshelf', x: -4.6, z: 3.3, rot: 1 }, { kind: 'tallshelf', x: 2.6, z: 5.4 }, { kind: 'crate', x: -4.4, z: 5.3 },
+    { kind: 'oven', x: -3.0, z: -5.2 }, { kind: 'table', x: -3.4, z: -2.0, rot: 1 }, { kind: 'logs', x: -4.5, z: -4.6 }, { kind: 'barrel', x: -0.7, z: -5.4 },
+    { kind: 'sackA', x: 2.0, z: -4.9 }, { kind: 'sackB', x: 4.2, z: -4.6 }, { kind: 'sackC', x: 4.3, z: -2.0 }, { kind: 'rack', x: 2.9, z: -3.5, rot: 1 }, { kind: 'barrel', x: 0.8, z: -5.5 }, { kind: 'barrel', x: 0.8, z: -4.6 },
+  ],
+  lightAt: (x, y, z) => (x > 2.8 && z < -3.4 ? 0.2 : (x > 0.1 && z < -0.15 ? 0.7 : 1)),   // ค่าแสงที่ตำแหน่ง (เทียบกลางร้าน): มุมห้องแป้งมืดสุด · ห้องแป้งส่วนอื่นค่อนข้างมืด · ที่อื่นสว่าง
+  resident: { kind: 'baker', at: _bkP[0], yaw: Math.PI, tint: { shirt: '#f1ead8', pants: '#6b5238', skin: '#f0cfaa' }, patrol: _bkP },
+  build: (h, c) => BAKERY.build(h, c),
+});
+
+// ---- เฟอร์นิเจอร์ของร้าน (ใช้ตัวสร้างบ้านเดิม: HOUSE.furn) ----
+{
+  const wood = GFX.rgb('#7a5430'), dk = GFX.rgb('#5e4020'), cream = GFX.rgb('#d9cfb4'), cream2 = GFX.rgb('#c4b894'), brick = GFX.rgb('#a8553a');
+  const under = (hh, kind) => (h, fx, FY0, fz, w, d) => SOLID.addBox(fx - w / 2, fx + w / 2, FY0 + 0.3, FY0 + hh, fz - d / 2, fz + d / 2, { house: h.id, stand: true, role: 'furn', kind });   // ชั้นวางมีช่องใต้ชั้นสูง 0.3 หนูลอดได้
+  const legs = (g, x, y, z, w, d, hh) => { for (const sx of [-1, 1]) for (const sz of [-1, 1]) g.box([x + sx * (w / 2 - 0.06), y + hh / 2, z + sz * (d / 2 - 0.06)], 0.1, hh, 0.1, dk); };
+  const pile = (g, x, y, z, w, d, hh, seed) => {   // กองกระสอบเป็นชั้นๆ
+    const nx = Math.max(1, Math.round(w / 0.65)), nz = Math.max(1, Math.round(d / 0.65)), L = Math.max(1, Math.round(hh / 0.3));
+    for (let l = 0; l < L; l++) for (let i = 0; i < nx; i++) for (let j = 0; j < nz; j++) {
+      const k = U.hash2(i + l * 7, j + seed, 21), cx = x - w / 2 + (i + 0.5) * w / nx, cz = z - d / 2 + (j + 0.5) * d / nz;
+      g.box([cx, y + l * 0.3 + 0.14, cz], w / nx * 0.96, 0.28, d / nz * 0.96, GFX.mul(k > 0.5 ? cream : cream2, 0.9 + 0.15 * k), (k - 0.5) * 0.18);
+    }
+    g.box([x, y + hh - 0.02, z], w * 0.6, 0.05, d * 0.5, GFX.mul(cream, 0.8));
+  };
+  const sack = (name, w, d, hh, seed) => { HOUSE.furn[name] = { w, d, h: hh, draw: (g, x, y, z, ww, dd) => pile(g, x, y, z, ww, dd, hh, seed) }; };
+  sack('sackA', 1.9, 1.1, 1.3, 3); sack('sackB', 1.5, 1.6, 1.8, 9); sack('sackC', 1.2, 1.2, 1.0, 15);
+  HOUSE.furn.counter = { w: 5.0, d: 0.8, h: 1.05, draw(g, x, y, z, w, d, rot, hs) {
+    g.box([x, y + 0.5, z], w, 1.0, d, wood); g.box([x, y + 1.03, z], w + 0.1, 0.1, d + 0.14, GFX.mul(wood, 1.15)); g.box([x, y + 0.5, z + d / 2 + 0.02], w - 0.2, 0.8, 0.04, dk);
+    for (let i = 0; i < 4; i++) g.ball([x - 1.8 + i * 1.2, y + 1.17, z + (i % 2 ? 0.1 : -0.1)], 0.15, 0, GFX.rgb(i % 2 ? '#c98a3c' : '#b97a35'), { jit: 0.1, sy: 0.65, seed: 60 + i });
+    hs.slots.push({ x: x - 1.2, y: y + 1.1, z, kind: 'counter' }, { x: x + 1.0, y: y + 1.1, z, kind: 'counter' });
+  } };
+  HOUSE.furn.breadshelf = { w: 2.4, d: 0.7, h: 1.8, solids: under(1.8, 'breadshelf'), draw(g, x, y, z, w, d, rot, hs) {
+    const lx = w >= d;   // แกนยาวของชั้นอยู่แนว x ไหม (w,d ที่ได้รับ = หลังหมุนแล้ว)
+    legs(g, x, y, z, w, d, 0.32); for (const lv of [0.32, 0.9, 1.4]) g.box([x, y + lv + 0.04, z], w, 0.08, d, wood);
+    g.box([lx ? x : x - w / 2 + 0.03, y + 1.0, lx ? z - d / 2 + 0.03 : z], lx ? w : 0.05, 1.4, lx ? 0.05 : d, GFX.mul(dk, 1.1)); g.box([x, y + 1.82, z], w + 0.06, 0.08, d + 0.06, wood);
+    for (let i = 0; i < 6; i++) for (const lv of [0.9, 1.4]) g.ball([x + (lx ? (i - 2.5) * 0.4 : 0.05), y + lv + 0.18, z + (lx ? 0.05 : (i - 2.5) * 0.4)], 0.15, 0, GFX.rgb((i + (lv > 1 ? 1 : 0)) % 2 ? '#c98a3c' : '#a8643a'), { jit: 0.12, sy: 0.7, seed: 70 + i });
+    hs.slots.push({ x: lx ? x - 0.5 : x, y: y + 1.9, z: lx ? z : z - 0.5, kind: 'shelf' }, { x: lx ? x + 0.5 : x, y: y + 1.9, z: lx ? z : z + 0.5, kind: 'shelf' });
+  } };
+  HOUSE.furn.tallshelf = { w: 2.0, d: 0.6, h: 2.4, solids: under(2.4, 'tallshelf'), draw(g, x, y, z, w, d) {
+    legs(g, x, y, z, w, d, 0.3); g.box([x, y + 1.35, z - d / 2 + 0.03], w, 2.1, 0.05, dk);
+    for (const lv of [0.3, 0.85, 1.4, 1.95, 2.38]) g.box([x, y + lv + 0.04, z], w, 0.08, d, wood);
+    for (let l = 0; l < 4; l++) for (let i = 0; i < 4; i++) g.box([x + (i - 1.5) * 0.45, y + 0.5 + l * 0.55, z], 0.32, 0.26, 0.4, GFX.mul(cream, 0.85 + 0.1 * ((i + l) % 3)));
+  } };
+  HOUSE.furn.rack = { w: 2.0, d: 0.6, h: 2.3, solids: under(2.3, 'rack'), draw(g, x, y, z, w, d) {
+    const lx = w >= d;
+    legs(g, x, y, z, w, d, 0.3); for (const lv of [0.3, 0.9, 1.5, 2.28]) g.box([x, y + lv + 0.04, z], w, 0.07, d, wood);
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) g.box([x + sx * (w / 2 - 0.05), y + 1.3, z + sz * (d / 2 - 0.05)], 0.09, 2.0, 0.09, dk);
+    for (let l = 0; l < 3; l++) for (let i = 0; i < 4; i++) g.box([x + (lx ? (i - 1.5) * 0.45 : 0), y + 0.5 + l * 0.6, z + (lx ? 0 : (i - 1.5) * 0.45)], 0.34, 0.3, 0.34, GFX.mul(cream2, 0.9 + 0.1 * ((i + l) % 2)));
+  } };
+  HOUSE.furn.oven = { w: 3.0, d: 1.6, h: 2.1, draw(g, x, y, z, w, d) {
+    g.box([x, y + 0.5, z], w, 1.0, d, GFX.mul(brick, 0.9)); g.box([x, y + 1.25, z + 0.05], w - 0.3, 0.55, d - 0.2, brick); g.box([x, y + 1.8, z - 0.1], w - 0.9, 0.55, d - 0.5, GFX.mul(brick, 0.85));
+    g.box([x, y + 0.62, z + d / 2 + 0.01], 1.5, 0.75, 0.08, GFX.rgb('#1c1612')); g.box([x, y + 0.58, z + d / 2 + 0.05], 1.25, 0.55, 0.06, GFX.rgb('#ff9a3a')); g.box([x, y + 0.5, z + d / 2 + 0.08], 0.8, 0.3, 0.05, GFX.rgb('#ffd27a'));   // ปากเตาเรืองไฟ
+    g.box([x, y + 0.1, z + d / 2 + 0.18], 1.9, 0.12, 0.35, GFX.rgb('#8a857c')); g.box([x - 0.55, y + 1.0, z + d / 2 + 0.03], 0.1, 1.0, 0.07, GFX.rgb('#3a3632')); g.box([x + 0.55, y + 1.0, z + d / 2 + 0.03], 0.1, 1.0, 0.07, GFX.rgb('#3a3632'));
+  } };
+  HOUSE.furn.logs = { w: 0.8, d: 1.6, h: 0.9, draw(g, x, y, z, w, d) {
+    for (let r = 0; r < 3; r++) for (let i = 0; i < 3 - r; i++) g.limb([x + (i - (2 - r) / 2) * 0.28, y + 0.14 + r * 0.25, z - d / 2 + 0.05], [x + (i - (2 - r) / 2) * 0.28, y + 0.14 + r * 0.25, z + d / 2 - 0.05], 0.14, 0.14, 7, GFX.mul(GFX.rgb('#7a5430'), 0.9 + 0.1 * ((i + r) % 2)), GFX.rgb('#c9a46a'));
+  } };
+}
+
+// ---- สร้างส่วนเพิ่มของร้าน (เรียกจาก HOUSE.build หลังเฟอร์นิเจอร์) ----
+BAKERY.build = (h, c) => {
+  const { shell, fade, vis, solid, base, FY, T, W, D, WH, px, pz, scene } = c, C = h.plan.colors, cWall = GFX.rgb(C.wall), cTim = GFX.rgb(C.timber), cStone = GFX.rgb('#8f8a80'), cFloor = GFX.rgb(C.floor);
+  BAKERY.h = h; const TH = 0.24, DH = 2.2;
+  // ผนังกั้น: ท่อนล่าง (เตี้ย) อยู่ในชุดเปิดเห็นเสมอ · ท่อนบนอยู่ในชุดที่จางเมื่อเราอยู่ข้างใน (เห็นทะลุทุกห้อง) · แต่ชนและกันสายตาเต็มความสูง
+  const seg = (x0, x1, z0, z1) => {
+    vis(shell, [x0, x1, base - 0.3, base + 0.9, z0, z1], GFX.mul(cWall, 0.95)); vis(shell, [x0 - 0.03, x1 + 0.03, base - 0.3, base + 0.5, z0 - 0.03, z1 + 0.03], cStone);
+    vis(fade, [x0, x1, base + 0.9, base + WH, z0, z1], GFX.mul(cWall, 0.97)); vis(fade, [x0 - 0.03, x1 + 0.03, base + WH - 0.22, base + WH, z0 - 0.03, z1 + 0.03], cTim);
+    solid([x0, x1, base - 0.3, base + WH, z0, z1], { wall: 'P' });
+  };
+  const lintel = (x0, x1, z0, z1) => { vis(fade, [x0, x1, base + DH, base + WH, z0, z1], GFX.mul(cWall, 0.97)); vis(shell, [x0, x1, base + DH - 0.14, base + DH, z0, z1], cTim); solid([x0, x1, base + DH, base + WH, z0, z1], { wall: 'P' }); };
+  const post = (x, z) => vis(shell, [x - 0.1, x + 0.1, base - 0.3, base + DH, z - 0.1, z + 0.1], cTim);
+  const wallX = (lz, gaps) => {   // ผนังกั้นตามแกน x ที่ lz (ช่องประตู = gaps [[a,b]...])
+    let cur = -W / 2; for (const [a, b] of gaps.concat([[W / 2, W / 2]])) { if (a > cur + 1e-3) seg(px + cur, px + a, pz + lz - TH / 2, pz + lz + TH / 2); if (b > a) { lintel(px + a, px + b, pz + lz - TH / 2, pz + lz + TH / 2); post(px + a, pz + lz); post(px + b, pz + lz); } cur = b; }
+  };
+  const wallZ = (lx, z0, z1, gap) => {
+    seg(px + lx - TH / 2, px + lx + TH / 2, pz + z0, pz + gap[0]); seg(px + lx - TH / 2, px + lx + TH / 2, pz + gap[1], pz + z1);
+    lintel(px + lx - TH / 2, px + lx + TH / 2, pz + gap[0], pz + gap[1]); post(px + lx, pz + gap[0]); post(px + lx, pz + gap[1]);
+  };
+  wallX(0, [[-2.4, -1.0], [2.4, 3.8]]); wallZ(0, -D / 2, -TH / 2, [-3.6, -2.2]);
+  // คานบน (ยืนได้): หน้าร้าน · ห้องเตาอบ · ห้องแป้ง — เรเวนเกาะพักได้ · หนูใช้ใต้ชั้นไม่เกี่ยว
+  for (const [lz, x0, x1] of [[2.0, -W / 2, W / 2], [-1.5, -W / 2, -0.12], [-5.0, 0.12, W / 2]]) {
+    const b = [px + x0, px + x1, base + 2.35, base + 2.65, pz + lz - 0.15, pz + lz + 0.15];
+    vis(shell, b, GFX.mul(cTim, 1.05)); SOLID.addBox(b[0], b[1], b[2], b[3], b[4], b[5], { house: h.id, stand: true, role: 'beam' });
+  }
+  // พื้นห้องแป้งมืดลง (เห็นว่าเป็นมุมมืด) · ไม่มีการชนเพิ่ม
+  vis(shell, [px + 0.15, px + W / 2, base + FY + 0.012, base + FY + 0.022, pz - D / 2, pz - 0.15], GFX.mul(cFloor, 0.72)); vis(shell, [px + 2.8, px + W / 2, base + FY + 0.024, base + FY + 0.034, pz - D / 2, pz - 3.4], GFX.mul(cFloor, 0.5));
+  BAKERY.buildHatch(h, c);
+};
+
+// หน้าต่างระบายควัน: บานพับล่างหมุนออกนอก · เชือกลงมาผูกตะขอที่ระดับพื้นด้านใน
+BAKERY.buildHatch = (h, c) => {
+  const { base, FY, T, W, D, px, pz, scene } = c, ho = BAKERY.ho = h.ops.find((o) => o.kind === 'hatch'), w = WALLV[ho.wall], wd = ho.u1 - ho.u0, ht = ho.v1 - ho.v0;
+  const ax = px + (w.nx ? w.ox * (W / 2 + T) : 0), az = pz + (w.nz ? w.oz * (D / 2 + T) : 0), P = (u, n, v) => [ax + u * w.tx + n * w.nx, base + v, az + u * w.tz + n * w.nz];
+  const sv = SAVE.read().bakery; BAKERY.S.cut = !!(sv && sv.cut);
+  // บาน: กลุ่มหมุนรอบบานพับล่าง (แกน X = ตามผนัง) · rotation.x บวก = ยกขอบบนออกนอกจนวางราบ
+  const root = new THREE.Group(); root.position.set(ax + ho.u0 * w.tx - 0.08 * w.nx, base + ho.v0, az + ho.u0 * w.tz - 0.08 * w.nz);
+  root.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(new THREE.Vector3(w.tx, 0, w.tz), new THREE.Vector3(0, 1, 0), new THREE.Vector3(w.nx, 0, w.nz)));
+  const pivot = new THREE.Group(); root.add(pivot);
+  const g = new GB(), tim = GFX.rgb(h.plan.colors.timber), pl = GFX.mul(GFX.rgb('#8a6a44'), 1);
+  g.box([wd / 2, ht / 2, 0], wd - 0.03, ht - 0.03, 0.05, GFX.mul(tim, 0.7));
+  for (let i = 0; i < 5; i++) g.box([wd / 2, 0.1 + i * (ht - 0.2) / 4, 0.04], wd - 0.08, 0.13, 0.05, GFX.mul(pl, 0.9 + 0.1 * (i % 2)));
+  g.box([wd / 2, 0.04, 0.03], wd, 0.08, 0.08, tim); g.box([wd / 2, ht - 0.04, 0.03], wd, 0.08, 0.08, tim);
+  const m = new THREE.Mesh(g.build(), GFX.mat); m.castShadow = false; pivot.add(m); scene.add(root);
+  ho.leaf = { root, pivot };
+  // เชือก + ตะขอ: เชือกยาว (ตึง) / เชือกเหลือเป็นท่อน (ขาดหรือคลาย) สลับ geometry ในเมชเดียว
+  const ur = ho.u0 + wd / 2 + 0.55, nr = -T - 0.04, rope = GFX.rgb('#d8c9a0'), iron = GFX.rgb('#3a3632'), hookV = 0.55;
+  const vbox = (gg, u, n, v0, v1, th, col) => { const p = P(u, n, (v0 + v1) / 2); gg.box([p[0], p[1], p[2]], th, v1 - v0, th, col); };
+  const fix = new GB(); const pp = P(ur, -T - 0.03, hookV); fix.box([pp[0], pp[1], pp[2]], 0.12, 0.08, 0.12, GFX.rgb('#5a3d26')); const hp = P(ur, -T - 0.12, hookV); fix.box([hp[0], hp[1], hp[2]], 0.05, 0.05, 0.14, iron);
+  const taut = new GB(), slack = new GB(); vbox(taut, ur, nr, hookV, ho.v1 - 0.12, 0.045, rope); vbox(taut, ur, nr, hookV - 0.04, hookV + 0.04, 0.09, GFX.rgb('#b89a6a'));
+  vbox(slack, ur, nr, ho.v1 - 0.6, ho.v1 - 0.12, 0.045, rope); vbox(slack, ur, nr, hookV - 0.04, hookV + 0.3, 0.045, rope);
+  for (const gg of [taut, slack]) gg.pos.push(...fix.pos), gg.col.push(...fix.col);
+  BAKERY.ropeGeo = { taut: taut.build(), slack: slack.build() };
+  BAKERY.ropeMesh = new THREE.Mesh(BAKERY.ropeGeo.taut, GFX.mat); BAKERY.ropeMesh.castShadow = false; scene.add(BAKERY.ropeMesh);
+  const hk = P(ur, -T - 0.5, 0); BAKERY.hook = { x: hk[0], z: hk[2], y: base + FY + 0.3 };
+  INTERACT.add({ id: 'baker.hatch.rope', x: hk[0], y: base + FY + 0.3, z: hk[2], r: 0.95, dy: 1.0, tags: ['paws'], house: h.id, inHouse: h.id, hold: BAKERY.cfg.biteSec, can: () => !BAKERY.S.cut && !ho.open,
+    text: () => (UI.touch ? 'แตะปุ่มมือค้างไว้ · กัดเชือก' : 'กดค้าง · กัดเชือก'), onHold: (p, dt) => BAKERY.gnaw(dt), run: () => BAKERY.cut() });
+  if (BAKERY.S.cut) { ho.open = true; ho.a = 1; if (ho.blocker) ho.blocker.on = false; BAKERY.S.slack = true; }
+};
+
+BAKERY.gnaw = (dt) => {   // เสียงแทะเบาๆ ทุก ~0.7 วินาทีที่กำลังกัด (วงเสียงเล็ก)
+  const S = BAKERY.S, B = INTERACT.who(); S.gn -= dt || 0.016; if (S.gn > 0) return; S.gn = 0.7;
+  SENSE.emit(B.x, B.y, B.z, 2.6, 'gnaw', false);
+};
+BAKERY.cut = () => {
+  const S = BAKERY.S, ho = BAKERY.ho; if (S.cut || !ho) return;
+  S.cut = true; S.slack = true; S.noticed = false; ho.open = true; if (ho.blocker) ho.blocker.on = false;
+  SAVE.write({ bakery: { cut: true } });
+  SENSE.emit(ho.pos[0], ho.pos[1], ho.pos[2], 6, 'open', true);
+  UI.toast('เชือกขาด — บานระบายควันตกลงมาเปิดออก', 3200);
+};
+// เปิด/ปิดบานโดยคนทำขนมปัง (ไม่ใช่เชือกขาด)
+BAKERY.setByBaker = (v) => { const ho = BAKERY.ho; ho.open = v; if (ho.blocker) ho.blocker.on = !v; BAKERY.S.slack = v; };
+
+BAKERY.update = (dt) => {
+  const S = BAKERY.S, ho = BAKERY.ho, h = BAKERY.h; if (!ho || !h) return;
+  if (!BAKERY.e) BAKERY.e = BODY.list.find((e) => e.house === 'baker') || null;
+  const e = BAKERY.e, hr = TIME.hour;
+  // ไล่ค่าบาน · เชือก
+  const t = ho.open ? 1 : 0; ho.a = Math.abs(ho.a - t) < 0.004 ? t : U.damp(ho.a, t, ho.open ? BAKERY.cfg.fall * 2.4 : 3.5, dt);
+  ho.leaf.pivot.rotation.x = ho.a * 1.5; ho.leaf.root.visible = h.flv > 0.03 && (ho.wall !== 'S' && ho.wall !== 'E' || h.fade > 0.5);
+  const g = S.slack ? BAKERY.ropeGeo.slack : BAKERY.ropeGeo.taut; if (BAKERY.ropeMesh.geometry !== g) BAKERY.ropeMesh.geometry = g;
+  BAKERY.ropeMesh.visible = h.flv > 0.03;
+  if (!e || e.state === 'gone') return;
+  // ช่วงเช้า: ไปถึงเตาแล้วเปิดเอง · สายแล้วปิด (ถ้าเชือกขาดแล้ว บานตกค้างเปิดถาวร)
+  S.want = hr >= BAKERY.cfg.open0 && hr < BAKERY.cfg.open1;
+  if (!S.cut && S.want !== ho.open) {
+    S.pend += dt; const near = Math.hypot(e.x - (h.x + BAKERY.oven[0]), e.z - (h.z + BAKERY.oven[1])) < BAKERY.cfg.ovenR;
+    if (near || S.pend > BAKERY.cfg.lateOpen) { BAKERY.setByBaker(S.want); S.pend = 0; }
+  } else S.pend = 0;
+  // เห็นบานที่ถูกกัดเปิด: ความสงสัยของบ้านขึ้นเล็กน้อย (ครั้งเดียว)
+  if (S.cut && !S.noticed && e.sus) {
+    const ex = e.x, ey = e.y + BODY.top(e) * e.kind.sense.eyeK, ez = e.z, d = Math.hypot(ho.pos[0] - ex, ho.pos[2] - ez);
+    if (d < 9 && (ho.pos[0] - ex) * Math.sin(e.yaw) + (ho.pos[2] - ez) * Math.cos(e.yaw) > d * Math.cos(e.kind.sense.ang) && SENSE.clear(ex, ey, ez, ho.inPos[0], ho.pos[1], ho.inPos[2])) {
+      S.noticed = true; e.sus.v = Math.max(e.sus.v, 0.3); e.sus.last = { x: ho.pos[0], y: ho.pos[1], z: ho.pos[2] }; e.sus.heardT = 0;
+    }
+  }
+};
+// ประกายไฟลอยจากปากเตา (ผ่าน GLOW ไม่เพิ่ม draw call/PointLight)
+BAKERY.drawGlow = (t) => {
+  const h = BAKERY.h; if (!h || h.fade > 0.5 || h.flv < 0.5) return;   // วาดเฉพาะตอนกล้องอยู่ข้างในร้าน (GLOW ไม่เช็กความลึก — ไม่งั้นลอยทะลุหลังคา)
+  const ox = h.x - 3.0, oz = h.z - 5.2 + 0.9, oy = h.base + HOUSE.FY + 0.8;
+  for (let i = 0; i < 4; i++) { const age = (t * 0.5 + i / 4) % 1; GLOW.add(ox + Math.sin(i * 5.1 + t * 1.3) * 0.5, oy + age * 1.1, oz + Math.cos(i * 3.7 + t) * 0.15, 0.1 * (1 - age * 0.5), 6, (1 - age) * 0.8); }
 };
 
 /* ---- 37-town.js ---- */
@@ -1389,12 +1583,8 @@ const TOWN_PLANS = [
     doors: [{ wall: 'S', at: 0, w: 1.1, h: 2.1 }], windows: [{ wall: 'S', at: -1.55, w: 1.1, h: 1.0, sill: 1.05 }, { wall: 'E', at: 0, w: 1.2, h: 1.0, sill: 1.05 }],
     vents: [{ wall: 'N', at: 0, w: 1.2 }], holes: [{ wall: 'W', at: 0.6, w: 0.7 }],
     furniture: [{ kind: 'bed', x: -1.4, z: -1.6 }, { kind: 'table', x: 0.9, z: -1.2 }, { kind: 'crate', x: 1.8, z: 2.0 }, { kind: 'bench', x: -1.6, z: 0.8, rot: 1 }] },
-  // บ้านคนทำขนมปัง: เป้าหมายของชุดทดสอบ (หน้าต่างปิด รูหนูใกล้ประตู)
-  { id: 'baker', x: 10, z: -7, W: 6, D: 8, wallH: 3.1, ridge: 3.0, colors: { wall: '#ecdfc2', roof: '#b5523b', timber: '#6b4a2f', floor: '#9a7a52', door: '#7a5232' },
-    doors: [{ wall: 'S', at: 1.0, w: 1.1, h: 2.1, locked: true }], windows: [{ wall: 'S', at: -1.6, w: 1.6, h: 1.2, sill: 1.0 }, { wall: 'E', at: 0.2, w: 1.5, h: 1.2, sill: 1.0 }],
-    holes: [{ wall: 'S', at: 2.45, w: 0.7 }],
-    furniture: [{ kind: 'hearth', x: 0, z: -3.45 }, { kind: 'table', x: 0.8, z: -0.6 }, { kind: 'shelf', x: -2.7, z: -1.2, rot: 1 }, { kind: 'bench', x: -0.9, z: 0.6 }, { kind: 'barrel', x: 2.5, z: -3.0 }, { kind: 'crate', x: 2.5, z: -1.8 }],
-    resident: { kind: 'keeper', at: [-0.4, 2.2], yaw: 3.14, tint: { shirt: '#f1ead8', pants: '#6b5238', skin: '#f0cfaa' } } },
+  // ร้านขนมปัง: ใหญ่ 3 ส่วน (หน้าร้าน/ห้องเตาอบ/ห้องเก็บแป้ง) · แปลนอยู่ใน 37-bakery.js
+  BAKERY.plan(),
   // บ้านช่างไม้: มีช่องชายคา (เรเวนเข้าได้โดยไม่ต้องใช้หนู)
   { id: 'carpenter', x: -12, z: -7, W: 6, D: 7, wallH: 3.1, ridge: 3.0, colors: { wall: '#d9d2c0', roof: '#6f7f8c', timber: '#4e3a28', floor: '#8a6a44', door: '#5a4026' },
     doors: [{ wall: 'S', at: -1.8, w: 1.1, h: 2.1, locked: true }], windows: [{ wall: 'S', at: 1.7, w: 1.4, h: 1.2, sill: 1.0 }],
@@ -1635,7 +1825,7 @@ TOWER.lightAt = (x, y, z) => {
   return Math.min(1, v);
 };
 // ค่าแสงที่ตัวผู้ถูกมอง (ตัวที่ผู้เล่นคุม) ยืนอยู่ · null = ไม่อยู่ในหอคอย
-TOWER.lightFor = (B) => { const y = SENSE.cy(B), h = HOUSE.insideAt(B.x, y, B.z); return h && h.plan.tower ? TOWER.lightAt(B.x, y, B.z) : null; };
+TOWER.lightFor = (B) => { const y = SENSE.cy(B), h = HOUSE.insideAt(B.x, y, B.z); return h && h.plan.tower ? TOWER.lightAt(B.x, y, B.z) : (h && h.plan.lightAt ? h.plan.lightAt(B.x - h.x, y, B.z - h.z) : null); };   // plan.lightAt = ค่าแสงของห้องที่ไม่ใช่หอคอย (ร้านขนมปัง: มุมห้องแป้งมืด)
 TOWER.floorTop = (k) => { const h = HOUSE.byId['tower' + k]; return h ? h.base + HOUSE.FY : null; };
 
 // TOWER.setGate (เปิด/ปิดฝา) อยู่ 39-towerpuz.js
@@ -2191,7 +2381,7 @@ TOWER.assist = (dt) => {
 
 // ถูกจับในหอคอย: ของเฝ้ากลับจุดเริ่ม
 TOWER.onCaught = () => {
-  for (const e of BODY.list) if (e.ai && e.ai.pts) { e.x = e.spawn.x; e.z = e.spawn.z; e.yaw = e.spawn.yaw; e.vx = e.vz = 0; e.ai.pi = 1; e.ai.mode = 'go'; e.ai.t = 25; e.ai.px = e.x; e.ai.pz = e.z; e.ai.sn = 0; }
+  for (const e of BODY.list) if (e.ai && e.ai.pts && e.house && e.house.indexOf('tower') === 0) { e.x = e.spawn.x; e.z = e.spawn.z; e.yaw = e.spawn.yaw; e.vx = e.vz = 0; e.ai.pi = 1; e.ai.mode = 'go'; e.ai.t = 25; e.ai.px = e.x; e.ai.pz = e.z; e.ai.sn = 0; }
 };
 
 // ประกายแผ่นอักขระตอนเหยียบ + ประกายเมื่อหม้อเดือด (เรียกจาก TOWER.drawGlow)
@@ -3082,7 +3272,10 @@ BODIES.kinds.villager = {
 };
 // ชนิดร่าง: ชาวบ้านที่อยู่ในบ้าน (เดินในห้องแคบๆ) · พ่อมด (ยืนในห้องบนหอคอย ไม่ไล่จับ — ฉากจบชิ้นทดลองใช้เขา)
 BODIES.kinds.keeper = Object.assign({}, BODIES.kinds.villager, { wander: { radius: 3.0, min: 0.8, rest: [2, 5], speed: 0.5 } });
-BODIES.kinds.wizard = Object.assign({}, BODIES.kinds.villager, { name: 'พ่อมด', rig: 'wizard', ai: null, wander: null,
+// คนทำขนมปัง: เดินวนตามเส้นทางระหว่างหน้าร้าน/ห้องเตาอบ/ห้องเก็บแป้ง (resident.patrol ในแปลนร้าน — 37-bakery.js) หยุดแต่ละจุดครู่หนึ่ง
+BODIES.kinds.baker = Object.assign({}, BODIES.kinds.villager, { name: 'คนทำขนมปัง', ai: 'patrol', wander: null, patrol: { speed: 0.5, pause: [2.0, 5.0] } });
+BODIES.kinds.wizard = Object.assign({}, BODIES.kinds.villager, { name: 'พ่อมด', rig: 'wizard', ai: null, wander: null, noMind: true,   // noMind = บังคับจิตไม่ได้เสมอ (แม้ #unlock=all)
+ 
   sense: Object.assign({}, BODIES.kinds.villager.sense, { range: 10, ang: 1.1, chase: false }) });
 
 // ---- ของเฝ้าหอคอย (ช่วง ข): เห็น → สงสัย → ไล่ → จับ (กลับชั้น 5) ไม่ทำร้าย · เดินตามเส้นทางลาดตระเวนคงที่ (K.ai 'patrol' + e.ai.pts จากข้อมูลชั้น) · school 'object' = ล็อก ยังบังคับจิตไม่ได้
@@ -3198,7 +3391,7 @@ const MIND = {
 const _pv = new THREE.Vector3(), _pf = new THREE.Vector3(), _pt = new THREE.Vector3();
 
 MIND.init = () => { MIND.seen = SAVE.read().seen || {}; };
-MIND.hint = (key, text, ms) => { if (MIND.seen[key]) return; MIND.seen[key] = 1; SAVE.write({ seen: MIND.seen }); UI.toast(text, ms || 5500); };
+MIND.hint = (key, text, ms) => { if (MIND.seen[key] || WIZ.lock) return; MIND.seen[key] = 1; SAVE.write({ seen: MIND.seen }); UI.toast(text, ms || 5500); };
 
 // ตัวเราตอนนี้ (ใช้เป็นต้นทางแสงพุ่ง)
 MIND.selfCenter = (out) => out.set(PLAYER.x, PLAYER.y + (PLAYER.form === 'human' ? 1.0 : 0.35), PLAYER.z);
@@ -3206,12 +3399,12 @@ MIND.centerOf = (out) => (PLAYER.ctl ? BODY.center(PLAYER.ctl, out) : MIND.selfC
 
 // ระยะถึงร่าง e (null = เริ่มบังคับไม่ได้) · ext = ระยะเผื่อให้เป้าหมายเดิม (กันป้ายกะพริบที่ขอบระยะ)
 MIND.reach = (e, ext) => {
-  const P = PLAYER; if (P.ctl || e.state === 'gone' || e.hid || !P.unlocked(e.kind.school)) return null;
+  const P = PLAYER; if (P.ctl || e.state === 'gone' || e.hid || e.kind.noMind || !P.unlocked(e.kind.school)) return null;
   const dh = Math.hypot(e.x - P.x, e.z - P.z), dy = P.y - e.y, x = ext || 0;
   return dh <= MIND.range + x && dy <= MIND.dyMax + x && dy >= MIND.dyMin - x ? Math.hypot(dh, dy * 0.5) : null;
 };
 // มีร่างที่ล็อกอยู่ (ยังไม่ปลดสาย) ในระยะราบหรือไม่ — ใช้บอกคำใบ้ตอนกด E/คลิกใกล้คนหรือก้อนหิน
-MIND.lockedNear = () => { const P = PLAYER; if (P.ctl) return null; for (const e of BODY.list) if (e.state !== 'gone' && !e.hid && !P.unlocked(e.kind.school) && Math.hypot(e.x - P.x, e.z - P.z) <= MIND.range) return e; return null; };
+MIND.lockedNear = () => { const P = PLAYER; if (P.ctl) return null; for (const e of BODY.list) if (e.state !== 'gone' && !e.hid && !e.kind.noMind && !P.unlocked(e.kind.school) && Math.hypot(e.x - P.x, e.z - P.z) <= MIND.range) return e; return null; };
 MIND.lockText = 'ยังบังคับสิ่งนี้ไม่ได้ — มีแต่สัตว์เล็ก (หนู) ที่บังคับจิตได้ตอนนี้';
 // จุดเรืองแสงลอยเหนือหัว (เต้นเบาๆ)
 MIND.dotAt = (e, out, t) => out.set(e.x, e.y + BODY.top(e) + 0.9 + 0.18 * Math.sin(t * 3 + e.spawn.x), e.z);
@@ -3253,7 +3446,7 @@ MIND.pick = (cx, cy, ptype) => {
   const rad = MIND.pickPx[ptype] || 40, t = performance.now() / 1000;
   let best = null, bd = 1e9, lockHit = null;
   for (const e of BODY.list) {
-    if (e.state === 'gone' || e.hid) continue;
+    if (e.state === 'gone' || e.hid || e.kind.noMind) continue;
     if (!PLAYER.unlocked(e.kind.school)) { { const v = _pt.copy(BODY.center(e, _pv)).project(R.cam); if (Math.hypot((v.x * 0.5 + 0.5) * R.w - cx, (-v.y * 0.5 + 0.5) * R.h - cy) <= rad && Math.hypot(e.x - PLAYER.x, e.z - PLAYER.z) <= MIND.range) lockHit = e; } continue; }
     for (const pt of [BODY.center(e, _pv), MIND.dotAt(e, _pf, t)]) {
       const v = _pt.copy(pt).project(R.cam), d = Math.hypot((v.x * 0.5 + 0.5) * R.w - cx, (-v.y * 0.5 + 0.5) * R.h - cy);
@@ -3270,7 +3463,7 @@ MIND.pick = (cx, cy, ptype) => {
 MIND.update = (dt) => {
   const P = PLAYER, wantM = INPUT.take('mind'), wantR = INPUT.take('release'), t = performance.now() / 1000;
   let tg = null, bd = 1e9;
-  if (!P.rs && !P.ctl && !FORM.busy()) {
+  if (!P.rs && !P.ctl && !FORM.busy() && !WIZ.lock) {
     if (MIND.picked && MIND.reach(MIND.picked, 1.5) !== null) tg = MIND.picked; else MIND.picked = null;
     const old = MIND.target;   // เป้าหมายเดิมที่ยังอยู่ในระยะเผื่อ (+1.5) ไม่ถูกแทนที่จนกว่าจะมีร่างอื่นใกล้กว่าชัดเจน
     if (!tg) for (const e of BODY.list) { const d = MIND.reach(e); if (d !== null && d < bd) { bd = d; tg = e; } }
@@ -3284,8 +3477,11 @@ MIND.update = (dt) => {
 
   // วาดจุดเรืองแสง + แสงพุ่ง + ควันแปลงร่าง + จุดใช้
   GLOW.begin();
+  const hp = HOUSE.insideAt(P.x, P.y + 0.3, P.z);   // บ้าน/ชั้นของหอคอยที่ตัวเราอยู่ (null = อยู่นอกอาคาร)
   for (const e of BODY.list) {
-    if (e.state === 'gone' || e.hid || e === P.ctl || !P.unlocked(e.kind.school) || P.ctl) continue;   // ระหว่างบังคับ ไม่มีจุดเรืองแสงบนตัวอื่น (เริ่มต่อไม่ได้)
+    if (WIZ.lock || e.kind.noMind || e.state === 'gone' || e.hid || e === P.ctl || !P.unlocked(e.kind.school) || P.ctl) continue;
+    const he = HOUSE.insideAt(e.x, e.y + 0.3, e.z);   // ตัวที่อยู่ในอาคาร/ชั้นอื่นที่ตัวเราไม่ได้อยู่ = ไม่วาดจุดเรืองแสง (ไม่งั้นโผล่ทะลุผนัง) ยกเว้นอยู่ในระยะบังคับจิตจริง
+    if (he && he !== hp && MIND.reach(e) === null) continue;   // ระหว่างบังคับ ไม่มีจุดเรืองแสงบนตัวอื่น (เริ่มต่อไม่ได้)
     const on = e === MIND.target;
     MIND.dotAt(e, _pv, t); GLOW.add(_pv.x, _pv.y, _pv.z, on ? 2.6 : 1.5, on ? 1 : 0, 0.92 + 0.08 * Math.sin(t * 4 + e.spawn.z));
   }
@@ -3301,8 +3497,8 @@ MIND.update = (dt) => {
     }
     if (u >= 1) { const q = (fx.t - fx.dur) / 0.28; if (q < 1) GLOW.add(to.x, to.y, to.z, 2 + 3 * q, 2, 1 - q); else MIND.fx = null; }
   }
-  FORM.draw(); SENSE.drawGlow(); WIZ.drawGlow(t); BAG.drawGlow(t); TOWER.drawGlow(t);
-  const io = INTERACT.near; if (io) GLOW.add(io.x, io.y + 0.7 + 0.12 * Math.sin(t * 4), io.z, 1.1, 0, 0.95);
+  FORM.draw(); SENSE.drawGlow(); WIZ.drawGlow(t); BAG.drawGlow(t); TOWER.drawGlow(t); BAKERY.drawGlow(t);
+  const io = INTERACT.near; if (io && !WIZ.lock) GLOW.add(io.x, io.y + 0.7 + 0.12 * Math.sin(t * 4), io.z, 1.1, 0, 0.95);
   GLOW.end();
   MIND.ui();
 };
@@ -3466,7 +3662,7 @@ const INPUT = {
   _held: new Set(),
 };
 INPUT.KEYMAP = { KeyE: 'mind', KeyQ: 'release', KeyR: 'form', KeyF: 'use', KeyI: 'bag', Tab: 'bag' };   // I / Tab = เปิด-ปิดกระเป๋าเวทมนตร์
-INPUT.GAMEKEYS = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'ShiftLeft', 'ShiftRight'];
+INPUT.GAMEKEYS = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'ShiftLeft', 'ShiftRight', 'KeyF'];   // KeyF อยู่ในรายการเพื่อให้รู้ว่ากดค้างอยู่ (ใช้กับ "กดค้างเพื่อทำ" เช่นหนูกัดเชือก)
 
 INPUT.update = () => {
   const h = INPUT._held, s = INPUT.stick, b = INPUT.btn;
@@ -3478,6 +3674,7 @@ INPUT.update = () => {
   INPUT.up = h.has('Space') || b.up;
   INPUT.down = h.has('ShiftLeft') || h.has('ShiftRight') || b.down;
 };
+INPUT.isHeld = (name) => (name === 'use' ? INPUT._held.has('KeyF') || !!INPUT.btn.use : false);   // กดค้างอยู่ไหม (ตอนนี้รองรับแค่ปุ่มใช้ F / ปุ่มมือบนมือถือ)
 INPUT.take = (name) => { const v = !!INPUT.pressed[name]; INPUT.pressed[name] = false; return v; };
 INPUT.clear = () => { INPUT._held.clear(); INPUT.stick.x = INPUT.stick.y = 0; INPUT.btn.up = INPUT.btn.down = false; INPUT.update(); };
 INPUT.snapshot = () => ({ x: +INPUT.x.toFixed(3), y: +INPUT.y.toFixed(3), up: INPUT.up, down: INPUT.down, held: [...INPUT._held] });
@@ -4448,6 +4645,48 @@ WIZ.drawGlow = (t) => {
   GLOW.add(P.x, cy, P.z, 1.5 + 0.2 * Math.sin(t * 3), 5, 0.3 + 0.3 * k);
 };
 
+/* ---- 66-goals.js ---- */
+// 66-goals.js — GOALS: กล่องเป้าหมายบนจอ (มุมซ้ายบน ใต้แถบพลังเวท) · บอกแค่ "ต้องทำอะไร" ไม่บอกวิธี/ปุ่ม/ทางเข้า · ไม่มีลูกศรชี้ตำแหน่ง
+// ข้อมูลล้วน: GOALS.list = [{ id, text, ok: () => bool }] แก้ข้อความ/เพิ่มข้อได้โดยไม่ต้องแตะตรรกะ · ทำสำเร็จแล้วติ๊กและเลื่อนไปข้อถัดไป (ติ๊กแล้วไม่ถอยกลับ แม้ของหล่นคืนตอนถูกจับ)
+// เซฟ: SAVE.goals = [true/false ต่อข้อ] · มือถือ: ย่อเหลือบรรทัดเดียว แตะเพื่อกาง/ย่อ · ซ่อนระหว่างฉากพ่อมด/จอจบ
+const GOALS = {
+  list: [
+    { id: 'food', text: 'หิวเหลือเกิน — หาอะไรกินจากร้านขนมปัง', ok: () => ['bread', 'cheese', 'sausage', 'loaf', 'pie'].some((k) => BAG.has(k)) },
+    { id: 'tower', text: 'ข่าวลือว่าในหอคอยพ่อมดมีของมีค่า — เข้าไปเอามา', ok: () => BAG.has('stonekey') },
+  ],
+  done: [], el: null, open: false, _k: '',
+};
+GOALS.CSS = `
+#gq{position:fixed;left:calc(12px + env(safe-area-inset-left,0px));top:calc(46px + env(safe-area-inset-top,0px));max-width:min(300px,calc(100vw - 100px));padding:7px 11px 8px;border-radius:12px;background:rgba(14,18,30,.62);border:2px solid rgba(255,255,255,.4);color:#fff;font:600 13px/1.4 system-ui,"Leelawadee UI",Tahoma,sans-serif;text-shadow:0 1px 2px rgba(0,0,0,.6);pointer-events:none;z-index:4;box-sizing:border-box}
+#gq h6{margin:0 0 3px;font-size:11px;font-weight:700;letter-spacing:.04em;color:#ffe9a8}
+#gq .g{display:flex;gap:7px;align-items:flex-start;margin-top:3px}
+#gq .g i{flex:none;position:relative;width:15px;height:15px;margin-top:2px;border-radius:4px;border:2px solid #fff;box-sizing:border-box}
+#gq .g.d i{background:#7be08a;border-color:#7be08a}
+#gq .g.d i:after{content:"";position:absolute;left:3px;top:0;width:4px;height:8px;border:solid #0b0e14;border-width:0 2px 2px 0;transform:rotate(40deg)}
+#gq .g.d span{opacity:.62;text-decoration:line-through}
+.touch #gq{pointer-events:auto}
+.touch #gq.c h6,.touch #gq.c .g:not(.cur){display:none}
+.touch #gq.c .g.cur span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:min(240px,calc(100vw - 150px))}
+`;
+GOALS.init = () => {
+  const sv = SAVE.read().goals; GOALS.done = GOALS.list.map((q, i) => !!(Array.isArray(sv) && sv[i]));
+  const st = document.createElement('style'); st.textContent = GOALS.CSS; document.head.appendChild(st);
+  const el = GOALS.el = document.createElement('div'); el.id = 'gq'; UI.root.appendChild(el);
+  el.addEventListener('pointerdown', (e) => { if (!UI.touch) return; e.preventDefault(); e.stopPropagation(); GOALS.open = !GOALS.open; GOALS.render(); });
+  GOALS.render();
+};
+GOALS.cur = () => { const i = GOALS.done.indexOf(false); return i < 0 ? GOALS.list.length - 1 : i; };   // ข้อที่กำลังทำ (ครบหมดแล้ว = ข้อสุดท้าย)
+GOALS.render = () => {
+  const cur = GOALS.cur(), all = GOALS.done.every((v) => v), key = GOALS.done.join() + '|' + GOALS.open + '|' + UI.touch + '|' + WIZ.lock;
+  if (key === GOALS._k) return; GOALS._k = key;
+  GOALS.el.style.display = WIZ.lock ? 'none' : 'block'; GOALS.el.classList.toggle('c', !GOALS.open);
+  GOALS.el.innerHTML = '<h6>เป้าหมาย' + (UI.touch ? (GOALS.open ? ' ▴' : ' ▾') : '') + '</h6>' + GOALS.list.map((q, i) => (i <= cur || all || GOALS.done[i] ? '<div class="g' + (GOALS.done[i] ? ' d' : '') + (i === cur ? ' cur' : '') + '"><i></i><span>' + q.text + '</span></div>' : '')).join('');
+};
+GOALS.update = () => {
+  for (let i = 0; i < GOALS.list.length; i++) if (!GOALS.done[i] && GOALS.list[i].ok()) { GOALS.done[i] = true; SAVE.write({ goals: GOALS.done.slice() }); }
+  GOALS.render();
+};
+
 /* ---- 72-ui.js ---- */
 // 72-ui.js — HUD + ปุ่มสัมผัส (DOM/CSS ล้วน ไม่มีฟอนต์/ไฟล์ภายนอก)
 // พลังเวท (แถบบนกลางจอ) · จอยเสมือนซ้ายล่าง (floating: แตะที่ไหนในโซนซ้ายล่างก็เริ่มจอย) · ปุ่ม ⤒ ⤓ ขวาล่าง (กดค้าง) · คำใบ้ปุ่ม (คอม) · ม่านมืดตอนตกเลยขอบ
@@ -4579,7 +4818,7 @@ UI.update = (dt) => {
   if (L.low !== low) { L.low = low; E.eh.classList.toggle('low', low); }
   const f = P.fade.toFixed(3); if (L.f !== f) { L.f = f; E.fd.style.opacity = f; }
   // ปุ่ม บังคับ / ↺ ปล่อย / แปลงร่าง / ใช้ (ซ่อนที่ไม่เกี่ยว ไม่รกจอ) · ป้ายเป้าหมาย · ป้ายชื่อ · toast
-  const pv = !!MIND.target && !P.ctl, rv = !!P.ctl, uv = !!INTERACT.near, fv = !P.ctl;
+  const sc = WIZ.lock, pv = !sc && !!MIND.target && !P.ctl, rv = !sc && !!P.ctl, uv = !sc && !!INTERACT.near, fv = !sc && !P.ctl;   // ฉากพ่อมด/จอจบ: ซ่อนปุ่มและคำใบ้ทั้งหมด
   if (L.pv !== pv) { L.pv = pv; E.bpos.classList.toggle('off', !pv); }
   if (L.rv !== rv) { L.rv = rv; E.brel.classList.toggle('off', !rv); }
   if (L.uv !== uv) { L.uv = uv; E.buse.classList.toggle('off', !uv); }
@@ -4588,6 +4827,7 @@ UI.update = (dt) => {
   if (UI._tt > 0) { UI._tt -= dt; if (UI._tt <= 0) E.ts.classList.remove('on'); }
   // คำใบ้ปุ่ม: จางหายเองเมื่อผ่านไป ~10 วินาที หรือผู้เล่นเริ่มใช้งานแล้วสักพัก
   UI._t += dt; if (INPUT.x || INPUT.y || INPUT.up) UI._used += dt;
+  if (L.hintSc !== WIZ.lock) { L.hintSc = WIZ.lock; E.hint.style.visibility = WIZ.lock ? 'hidden' : ''; }
   if (!L.hintOff && (UI._t > 10 || UI._used > 3 || UI.touch)) { L.hintOff = true; E.hint.classList.add('off'); }
 };
 
@@ -4818,7 +5058,7 @@ function initScene() {
   PLAYER.init();
   BODY.build(R.scene); GLOW.init(R.scene, BODY.list.length + 240);   // ร่างในโลก + จุดเรืองแสง/แสงพุ่ง/ควันแปลงร่าง (ต้องสร้างหลัง PROPS: ใช้ COLL)
   UI.init(); MIND.init();
-  SENSE.build(); SENSE.buildFx(R.scene); BAG.build(R.scene); WIZ.init();   // ระบบมองเห็น/ได้ยิน · กระเป๋า+ของในโลก · ฉากพ่อมด (ต้องหลัง BODY/TOWN/UI)
+  SENSE.build(); SENSE.buildFx(R.scene); BAG.build(R.scene); WIZ.init(); GOALS.init();   // ระบบมองเห็น/ได้ยิน · กระเป๋า+ของในโลก · ฉากพ่อมด (ต้องหลัง BODY/TOWN/UI)
   if (HASH.debugcam) {
     CAM.setRange({ min: 36, max: 620 }); CAM.user = 105;
     const s = WORLD.byId[HASH.island]; CAM.panTo(s.x, s.z, true); CAM.setZoom(HASH.zoom || 105, true);
@@ -4848,7 +5088,9 @@ function frame(now) {
   SENSE.update(dt);
   BODY.update(dt);
   BAG.update();
-  INTERACT.update();
+  INTERACT.update(dt);
+  BAKERY.update(dt);
+  GOALS.update(dt);
   HOUSE.update(dt, PLAYER.camBody());
   TOWER.update(dt);
   MIND.update(dt);
@@ -4971,10 +5213,27 @@ DBG.towerGates = () => TOWER.links.filter((L) => L.gate).map((L) => ({ id: L.id,
 // towerPuz = หม้อเดือด · วาล์ว · คันโยก · แผ่นอักขระ (พิกัดโลก + กำลังเหยียบ) · ลังผลักได้ · ไฟหม้อ (v) · หน้าต่างชั้น 5
 Object.defineProperty(DBG, 'towerPuz', { enumerable: true, get: () => { const S = TOWER.S; return { boil: S.boil, valveOn: S.valveOn, valve: _f2(S.valve), leverOn: S.leverOn, lever: _f2(S.lever), cauldronV: TOWER.cauldron ? _f2(TOWER.cauldron.v) : null,
   plates: S.plates.map((p) => ({ x: _f2(p.x), z: _f2(p.z), on: p.on, flash: _f2(p.flash) })), crates: S.crates.map((c) => ({ x: _f2(c.tx), z: _f2(c.tz), shown: _f2(c.x) })), win: TOWER.win ? { x: _f2(TOWER.win.x), z: _f2(TOWER.win.z), y0: _f2(TOWER.win.y0), y1: _f2(TOWER.win.y1) } : null }; } });
-DBG.towerGuards = () => BODY.list.filter((e) => e.ai && e.ai.pts).map((e) => { const s = e.sus; return { id: e.id, kind: e.kindId, floor: DBG.towerFloorOf(e.id), x: _f2(e.x), y: _f2(e.y), z: _f2(e.z), yaw: _f2(e.yaw), mode: e.ai.mode, pi: e.ai.pi, v: _f2(s.v), lvl: s.lvl, sees: _f2(s.sees), seen: s.seenNow, hid: !!e.hid }; });
+DBG.towerGuards = () => BODY.list.filter((e) => e.ai && e.ai.pts && e.house && e.house.indexOf('tower') === 0).map((e) => { const s = e.sus; return { id: e.id, kind: e.kindId, floor: DBG.towerFloorOf(e.id), x: _f2(e.x), y: _f2(e.y), z: _f2(e.z), yaw: _f2(e.yaw), mode: e.ai.mode, pi: e.ai.pi, v: _f2(s.v), lvl: s.lvl, sees: _f2(s.sees), seen: s.seenNow, hid: !!e.hid }; });
 DBG.towerUse = (id) => { const o = INTERACT.list.find((q) => q.id === id); if (!o) return null; o.run(); return true; };   // เรียกการกระทำของจุดใช้ตรงๆ (ข้ามระยะ/แท็ก — ใช้เตรียมฉากเท่านั้น)
 DBG.towerCaught = () => ({ caught: SENSE.caught, last: SENSE.lastCatch, floor: DBG.towerFloorOf() });
 DBG.freezeGuards = (b) => { SENSE.freeze = !!b; return SENSE.freeze; };   // (ตรวจ) แช่แข็งของเฝ้า: ไม่เดิน ไม่เห็น
+// ---- ร้านขนมปัง / เป้าหมาย ----
+// bakery = บานระบายควัน (เปิด/มุม/ขาด) · เชือก · คนทำขนมปัง · ช่วงเช้า · bakeryCut() = ทำให้เชือกขาดทันที (เตรียมฉาก) · bakeryPut(lx,lz) = วางคนทำขนมปังที่จุดเทียบกลางร้าน
+Object.defineProperty(DBG, 'bakery', { enumerable: true, get: () => { const B = BAKERY, S = B.S, e = B.e, o = B.ho, hk = B.hook, I = INTERACT.list.find((q) => q.id === 'baker.hatch.rope');
+  return { hatch: o ? { open: o.open, a: _f2(o.a), blocking: o.blocker ? o.blocker.on : null, rot: _f2(o.leaf.pivot.rotation.x) } : null, cut: S.cut, slack: S.slack, want: S.want, pend: _f2(S.pend), noticed: S.noticed, hour: _f2(TIME.hour),
+    rope: I ? { prog: _f2(I.prog || 0), near: INTERACT.near === I, x: _f2(hk.x), y: _f2(hk.y), z: _f2(hk.z) } : null,
+    baker: e ? { x: _f2(e.x), z: _f2(e.z), lx: _f2(e.x - B.h.x), lz: _f2(e.z - B.h.z), pi: e.ai.pi, mode: e.ai.mode, v: _f2(e.sus.v), lvl: e.sus.lvl, sees: _f2(e.sus.sees), seen: e.sus.seenNow, yaw: _f2(e.yaw) } : null }; } });
+DBG.bakeryCut = () => { BAKERY.cut(); return DBG.bakery.hatch; };
+DBG.bakeryPut = (lx, lz, yaw, hold) => { const h = BAKERY.h, r = DBG.putBody(BAKERY.e.id, h.x + lx, h.base + HOUSE.FY, h.z + lz, yaw); if (hold) BAKERY.e.ai.t = 999; return r; };   // hold = ให้ยืนอยู่ตรงนั้น (ไม่เริ่มเดินต่อ) · bakeryRelease() = ปล่อยให้เดินต่อ
+DBG.bakeryRelease = () => { BAKERY.e.ai.t = 0.1; return true; };
+DBG.faceTo = (lx, lz, tx, tz) => +Math.atan2(tx - lx, tz - lz).toFixed(3);   // yaw ที่หันจาก (lx,lz) ไป (tx,tz)
+DBG.bakeryAt = (lx, lz, y) => { const h = BAKERY.h; return [h.x + lx, (y === undefined ? h.base + HOUSE.FY : h.base + y), h.z + lz]; };   // พิกัดโลกจากพิกัดเทียบกลางร้าน
+Object.defineProperty(DBG, 'goals', { enumerable: true, get: () => ({ done: GOALS.done.slice(), cur: GOALS.cur(), text: GOALS.list[GOALS.cur()].text, shown: GOALS.el.style.display !== 'none', collapsed: GOALS.el.classList.contains('c'), saved: SAVE.read().goals || null, rect: (() => { const r = GOALS.el.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top), Math.round(r.right), Math.round(r.bottom)]; })() }) });
+DBG.possess = (id) => { const e = BODY.byId[id]; if (!e) return null; if (PLAYER.ctl) MIND.release('user'); PLAYER.state = 'ground'; MIND.begin(e, true); return PLAYER.ctl ? PLAYER.ctl.id : null; };   // (ตรวจ) บังคับจิตตัวนี้ทันที ข้ามระยะ/สาย
+DBG.mouseId = (i) => (BODY.list.filter((e) => e.kindId === 'mouse')[i || 0] || {}).id || null;
+DBG.uiLabels = () => ({ tg: UI.els.tg.style.display, tgText: UI.els.tg.textContent, us: UI.els.us.style.display, toast: UI.els.ts.classList.contains('on') ? UI.els.ts.textContent : '', glowPts: GLOW.n, target: MIND.target ? MIND.target.id : null });
+DBG.glowOf = (id) => { const e = BODY.byId[id]; if (!e) return null; const out = []; for (let i = 0; i < GLOW.n; i++) if (Math.hypot(GLOW.pos[i * 3] - e.x, GLOW.pos[i * 3 + 2] - e.z) < 0.01 && GLOW.knd[i] < 2) out.push(+GLOW.pos[i * 3 + 1].toFixed(2)); return out; };   // จุดเรืองแสงของตัวนี้ที่ถูกวาดอยู่ตอนนี้ (ความสูง y) · ว่าง = ไม่วาด
+DBG.elRect = (sel) => { const e = document.querySelector(sel); if (!e) return null; const r = e.getBoundingClientRect(); return { cx: Math.round((r.left + r.right) / 2), cy: Math.round((r.top + r.bottom) / 2), l: Math.round(r.left), t: Math.round(r.top), r: Math.round(r.right), b: Math.round(r.bottom), shown: getComputedStyle(e).display !== 'none' }; };
 
 })();</script>
 </body>
