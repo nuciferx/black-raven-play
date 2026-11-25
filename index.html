@@ -6487,6 +6487,90 @@ UI.setUse = (text, x, y) => {
 UI.badge = (text) => { const E = UI.els; E.bn.textContent = text; E.bn.classList.add('on'); UI._bt = 3; };      // ป้ายชื่อเป้าหมายที่บังคับจิตอยู่ สั้นๆ ~3 วิ
 UI.toast = (text, ms) => { const E = UI.els; E.ts.textContent = text; E.ts.classList.add('on'); UI._tt = (ms || 4000) / 1000; };
 
+/* ---- 73-menu.js ---- */
+// 73-menu.js — เมนูหยุดเกม (ปุ่ม ☰ มุมซ้ายบน / Esc) · เล่นต่อ · เริ่มเกมใหม่ (ล้างเซฟ) · ลิงก์ #reset=1 ล้างเซฟก่อนเกมโหลด
+// เซฟทั้งเกมอยู่ในคีย์เดียว SAVE.key ('openrpg.save.v2') · ล้างทุกคีย์ที่ขึ้นต้น 'openrpg.' เผื่อมีคีย์เก่า/ใหม่ · เมนูเป็น HTML ไม่เพิ่ม draw call
+// เมนูเปิด = MENU.on: main loop ใช้ dt = 0 (เวลา/ตัวละคร/AI หยุด) · INPUT ถูกล้างทุกเฟรม · Esc เปิดได้เฉพาะตอนไม่มีฉาก/บทพูด/กระเป๋า
+const MENU = { on: false, confirming: false, el: null, btn: null, keys: [] };
+
+// ล้างเซฟของเกมนี้ทุกคีย์ (try/catch: โหมดส่วนตัวบางเบราว์เซอร์โยน error) · คืนรายการคีย์ที่ลบ
+MENU.wipe = () => {
+  const gone = [];
+  try {
+    const ks = []; for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.indexOf('openrpg.') === 0) ks.push(k); }
+    if (ks.indexOf(SAVE.key) < 0) ks.push(SAVE.key);
+    for (const k of ks) { try { localStorage.removeItem(k); gone.push(k); } catch (e) { /* ไม่เป็นไร */ } }
+  } catch (e) { try { localStorage.removeItem(SAVE.key); } catch (e2) { /* ไม่เป็นไร */ } }
+  return gone;
+};
+
+// #reset=1: ล้างก่อนที่ระบบใดจะอ่านเซฟ (ไฟล์นี้รันก่อน boot) แล้วเอา reset=1 ออกจาก URL ไม่ให้ล้างซ้ำตอนรีเฟรช
+if (_h.reset === '1') {
+  MENU.wipe();
+  try { const nh = location.hash.replace(/^#/, '').split('&').filter((p) => p && p.split('=')[0] !== 'reset').join('&'); history.replaceState(null, '', location.pathname + location.search + (nh ? '#' + nh : '')); } catch (e) { /* ไม่เป็นไร */ }
+}
+
+MENU.CSS = `
+#mnb{position:fixed;left:calc(12px + env(safe-area-inset-left,0px));top:calc(10px + env(safe-area-inset-top,0px));width:32px;height:32px;border-radius:9px;background:rgba(14,18,30,.62);border:2px solid rgba(255,255,255,.55);color:#fff;font:700 18px/1 system-ui,sans-serif;display:flex;align-items:center;justify-content:center;box-sizing:border-box;padding:0;cursor:pointer;z-index:6;pointer-events:auto;touch-action:none;-webkit-user-select:none;user-select:none;text-shadow:0 1px 2px rgba(0,0,0,.6)}
+#mnb.off{display:none}
+#mn{position:fixed;left:0;top:0;right:0;bottom:0;display:none;align-items:center;justify-content:center;background:rgba(5,7,13,.72);z-index:12;pointer-events:auto;touch-action:none;-webkit-user-select:none;user-select:none;font-family:system-ui,-apple-system,"Segoe UI",Tahoma,"Leelawadee UI",sans-serif;padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px)}
+#mn.on{display:flex}
+#mn .mc{width:min(300px,86vw);padding:18px 20px 20px;border-radius:16px;background:rgba(14,18,30,.92);border:2px solid rgba(255,255,255,.4);color:#fff;text-align:center;box-shadow:0 8px 30px rgba(0,0,0,.5);box-sizing:border-box}
+#mn h2{margin:0 0 4px;font-size:22px;letter-spacing:.06em;text-shadow:0 1px 3px rgba(0,0,0,.6)}
+#mn .mt{margin:0 0 14px;font-size:11px;opacity:.55;letter-spacing:.12em}
+#mn p{margin:0 0 14px;font-size:15px;line-height:1.5;font-weight:600}
+#mn button{display:block;width:100%;margin-top:9px;padding:12px 10px;border-radius:12px;border:2px solid rgba(255,255,255,.55);background:rgba(255,255,255,.14);color:#fff;font:700 16px/1.2 system-ui,"Leelawadee UI",Tahoma,sans-serif;cursor:pointer;touch-action:none}
+#mn button:active{background:rgba(255,255,255,.38)}
+#mn button.dg{border-color:#ff7a6a;background:rgba(255,90,74,.28)}
+#mn .hh{margin-top:12px;font-size:11px;opacity:.5}
+`;
+
+MENU.init = () => {
+  const st = document.createElement('style'); st.textContent = MENU.CSS; document.head.appendChild(st);
+  const b = MENU.btn = document.createElement('button'); b.id = 'mnb'; b.type = 'button'; b.title = 'เมนู (Esc)'; b.textContent = '☰'; b.setAttribute('aria-label', 'เมนู');
+  const z = MENU.el = document.createElement('div'); z.id = 'mn';
+  z.innerHTML = '<div class="mc"><div class="m1"><h2>Black Raven</h2><div class="mt">เมนู</div><button type="button" data-a="resume">เล่นต่อ</button><button type="button" data-a="new">เริ่มเกมใหม่</button><div class="hh">' + (UI.touch ? '' : 'Esc = เล่นต่อ') + '</div></div>' +
+    '<div class="m2" style="display:none"><p>ความคืบหน้าทั้งหมดจะหายไป<br>เริ่มใหม่ไหม?</p><button type="button" class="dg" data-a="yes">เริ่มใหม่</button><button type="button" data-a="no">ยกเลิก</button></div></div>';
+  document.body.appendChild(b); document.body.appendChild(z);
+  b.addEventListener('click', (e) => { e.preventDefault(); if (!MENU.on) MENU.open(); });
+  b.addEventListener('pointerdown', (e) => { e.stopPropagation(); });
+  z.addEventListener('pointerdown', (e) => { e.stopPropagation(); });
+  z.addEventListener('wheel', (e) => { e.stopPropagation(); }, { passive: true });
+  z.addEventListener('click', (e) => {
+    const a = e.target && e.target.getAttribute && e.target.getAttribute('data-a'); e.stopPropagation();
+    if (a === 'resume') MENU.close(); else if (a === 'new') MENU.confirm(true); else if (a === 'no') MENU.confirm(false); else if (a === 'yes') MENU.restart();
+  });
+  // capture: ตัดสินก่อนตัวจัดการ Esc ของกระเป๋า/บทพูด (ที่ปิดตัวเองแล้วทำให้สถานะเปลี่ยนกลางทาง)
+  window.addEventListener('keydown', (e) => {
+    if (e.code !== 'Escape' || e.repeat) return;
+    if (MENU.on) { e.preventDefault(); e.stopImmediatePropagation(); if (MENU.confirming) MENU.confirm(false); else MENU.close(); return; }
+    if (MENU.blocked()) return;
+    e.preventDefault(); e.stopImmediatePropagation(); MENU.open();
+  }, true);
+};
+// ตอนนี้มีฉาก/บทพูด/กระเป๋าเปิดอยู่ไหม (Esc ของพวกนั้นต้องทำหน้าที่เดิม)
+MENU.blocked = () => !!(WIZ.lock || INTRO.on || TALK.on || BAG.open);
+MENU.open = () => {
+  if (MENU.on) return;
+  MENU.on = true; MENU.confirm(false); MENU.el.classList.add('on'); INPUT.clear(); INPUT.pressed = {};
+};
+MENU.close = () => { if (!MENU.on) return; MENU.on = false; MENU.el.classList.remove('on'); INPUT.clear(); INPUT.pressed = {}; };
+MENU.confirm = (v) => {
+  MENU.confirming = !!v; const q = (s) => MENU.el.querySelector(s);
+  q('.m1').style.display = v ? 'none' : 'block'; q('.m2').style.display = v ? 'block' : 'none';
+};
+MENU.restart = () => {
+  SAVE.write = () => false;   // กัน pagehide/beforeunload เขียนเซฟกลับลงไปหลังล้าง
+  MENU.wipe();
+  location.reload();
+};
+// เรียกทุกเฟรม: ซ่อนปุ่มตอนมีฉาก/บทพูด · ระหว่างเมนูเปิดล้างอินพุตไว้ไม่ให้ตัวละครขยับ
+MENU.update = () => {
+  const hide = !MENU.on && (WIZ.lock || INTRO.on || TALK.on);
+  if (MENU._hide !== hide) { MENU._hide = hide; MENU.btn.classList.toggle('off', hide); }
+  if (MENU.on) { INPUT.clear(); INPUT.pressed = {}; }
+};
+
 /* ---- 90-main.js ---- */
 // 90-main.js — ปุ่ม/เมาส์/นิ้วของกล้อง (กล้องอยู่ 46-camera.js) · main loop · ตัวช่วยตรวจ (__dbg)
 // #debugcam=1 = กล้องดีบักลากเลื่อนแบบ M1 (ไม่ตามผู้เล่น) · __dbg.panTo ใช้ได้เฉพาะโหมดนั้น
@@ -6638,7 +6722,7 @@ function initScene() {
   PLAYER.init();
   BODY.build(R.scene); GLOW.init(R.scene, BODY.list.length + 240);   // ร่างในโลก + จุดเรืองแสง/แสงพุ่ง/ควันแปลงร่าง (ต้องสร้างหลัง PROPS: ใช้ COLL)
   UI.init(); MIND.init();
-  SENSE.build(); SENSE.buildFx(R.scene); BAG.build(R.scene); WIZ.init(); GOALS.init(); STORY.init(); TALK.init(); JOBS.init(); TUT.init(); INTRO.init();   // ระบบมองเห็น/ได้ยิน · กระเป๋า+ของในโลก · ฉากพ่อมด (ต้องหลัง BODY/TOWN/UI)
+  SENSE.build(); SENSE.buildFx(R.scene); BAG.build(R.scene); WIZ.init(); GOALS.init(); STORY.init(); TALK.init(); JOBS.init(); TUT.init(); INTRO.init(); MENU.init();   // ระบบมองเห็น/ได้ยิน · กระเป๋า+ของในโลก · ฉากพ่อมด (ต้องหลัง BODY/TOWN/UI)
   if (HASH.debugcam) {
     CAM.setRange({ min: 36, max: 620 }); CAM.user = 105;
     const s = WORLD.byId[HASH.island]; CAM.panTo(s.x, s.z, true); CAM.setZoom(HASH.zoom || 105, true);
@@ -6657,7 +6741,7 @@ let _last = 0, _acc = 0, _n = 0, _warm = 0;
 
 function frame(now) {
   requestAnimationFrame(frame);
-  const dt = Math.min(0.05, Math.max(0, (now - _last) / 1000));
+  const dt = MENU.on ? 0 : Math.min(0.05, Math.max(0, (now - _last) / 1000));   // เมนูเปิด = เวลาเกมหยุด
   _last = now;
 
   TIME.update(dt);
@@ -6694,6 +6778,7 @@ function frame(now) {
   FX.update();
   TOWER.updateLights(dt);
   WEATHER.update();
+  MENU.update();
   UI.update(dt);
   R.render();
 
@@ -6862,6 +6947,7 @@ DBG.introBird = (T) => {
   }
   return { bg: INTRO.bg, cam: [pc.position.x, pc.position.y, pc.position.z].map(_f2), vis: out, clip: INTRO.clipOn };
 };
+DBG.setStory = (k, v) => { STORY.set(k, v); return STORY.s; };   // (ตรวจ) ตั้งฟิลด์เรื่อง + เซฟ เช่น ('ch', 2)
 
 })();</script>
 </body>
