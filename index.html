@@ -103,6 +103,7 @@ const HASH = {
   zoom: _h.zoom === undefined ? null : _num(_h.zoom, 100),
   unlock: _h.unlock === 'all' ? 'all' : null,   // #unlock=all เปิดทุกสายพลัง (ทดสอบว่าของ M4 ยังทำงานภายใต้กติกาใหม่)
   form: _h.form === 'raven' ? 'raven' : null,   // #form=raven เริ่มเป็นเรเวน (ดีบัก/ถ่ายภาพ)
+  intro: _h.intro === '0' ? 0 : (_h.intro === '1' ? 1 : null),   // #intro=0 ปิดฉากเปิดเกม (ใช้ในชุดตรวจเดิม) · #intro=1 บังคับเล่นแม้มีเซฟ
   daylen: _h.daylen === undefined ? 0 : Math.max(5, _num(_h.daylen, 720)),   // #daylen=วินาทีจริงต่อวันในเกม (ทดสอบ)
 };
 
@@ -1542,6 +1543,16 @@ BAKERY.build = (h, c) => {
     vis(wl.S, wbox('S', 1.0, 2.0, 2.15, 2.62, 0.9, 0.97), GFX.mul(wd, 0.85)); vis(wl.S, wbox('S', 1.03, 1.97, 2.18, 2.59, 0.97, 1.0), GFX.rgb('#e6d3a8'));   // แผ่นป้าย + หน้าป้ายสีครีม
     for (const u of [1.1, 1.9]) vis(wl.S, wbox('S', u - 0.015, u + 0.015, 2.62, 2.9, 0.92, 0.95), GFX.rgb('#d8c9a0'));   // เชือกแขวนป้าย
     const sg = wbox('S', 1.5, 1.5, 2.38, 2.38, 1.03, 1.03); wl.S.ball([sg[0], sg[2], sg[4]], 0.2, 0, bd, { sy: 0.55, jit: 0.06, seed: 90 }); wl.S.ball([sg[0] - 0.22, sg[2] - 0.02, sg[4]], 0.13, 0, bd2, { sy: 0.6, seed: 91 }); wl.S.ball([sg[0] + 0.22, sg[2] - 0.02, sg[4]], 0.13, 0, bd2, { sy: 0.6, seed: 92 });   // รูปขนมปัง 3 ก้อน
+  }
+  // รูหนูที่โคนผนังหน้าร้าน (holes ใน plan): ปากรูมืดสนิท + แป้งหกเป็นทางเลอะออกมาหน้ารู (กองไม่เป็นวง ไม่ใช่ตัวชี้ทาง — แค่ให้ตาสะดุดเมื่อมองดีๆ)
+  { const hl = h.plan.holes[0], u = hl.at, fl = [GFX.rgb('#f5efdf'), GFX.rgb('#e9dfc6'), GFX.rgb('#fbf7ea')], cr = GFX.rgb('#c98a3c');
+    const pt = (uu, nn, vv) => { const q = wbox('S', uu, uu, vv, vv, nn, nn); return [q[0], q[2], q[4]]; };
+    vis(wl.S, wbox('S', u - hl.w / 2 - 0.06, u + hl.w / 2 + 0.06, -0.05, 0.58, 0.0, 0.06), GFX.rgb('#080605'));   // ปากรูดำ ยื่นพ้นผิวผนังเล็กน้อย (มืดกว่าผนังรอบข้างชัดเจน)
+    [[0.05, 0.4, 0.46, 0], [-0.3, 0.95, 0.36, 1], [0.4, 1.2, 0.44, 2], [-0.1, 1.7, 0.28, 0], [-0.7, 0.5, 0.24, 1], [0.75, 0.55, 0.22, 2], [0.25, 2.25, 0.2, 1], [-0.5, 1.4, 0.22, 2]].forEach(([du, nn, r, ci], i) => {
+      wl.S.ball(pt(u + du, nn, 0.03), r, 0, fl[ci], { sy: 0.07, jit: 0.35, seed: 100 + i });
+    });
+    wl.S.ball(pt(u + 0.02, 0.12, 0.2), 0.12, 0, fl[0], { sy: 0.45, jit: 0.3, seed: 120 });   // แป้งเกาะที่ขอบรู
+    [[-0.12, 0.6], [0.28, 1.2], [-0.3, 0.95]].forEach(([du, nn], i) => wl.S.ball(pt(u + du, nn, 0.05), 0.045, 0, cr, { sy: 0.7, jit: 0.2, seed: 130 + i }));   // เศษขนมปัง
   }
   BAKERY.buildHatch(h, c);
 };
@@ -4525,7 +4536,7 @@ PLAYER.setPos = (x, y, z) => {
 
 PLAYER.save = () => {
   const P = PLAYER;
-  if (HASH.islandSet || P.rs || !P.isl) return;
+  if (HASH.islandSet || P.rs || !P.isl || INTRO.on) return;   // ระหว่างฉากเปิดเกมไม่เซฟตำแหน่ง (โหลดซ้ำกลางฉาก = เล่นฉากใหม่)
   P._since = 0;
   const r = (v) => +v.toFixed(3);
   SAVE.write({ player: { x: r(P.x), y: r(P.y), z: r(P.z), yaw: r(P.yaw), energy: r(P.energy), isl: P.isl.id, form: P.form }, schools: P.schools });
@@ -4909,7 +4920,7 @@ WIZ.restart = () => {
   location.reload();
 };
 WIZ.update = (dt) => {
-  if (!WIZ.lock) return;
+  if (!WIZ.lock || INTRO.on) return;   // ฉากเปิดเกม (70-intro.js) ใช้ WIZ.lock ล็อกการควบคุม แต่ไม่ใช่ฉากพ่อมด
   for (const k of ['mind', 'release', 'form', 'use']) INPUT.pressed[k] = false;   // ฉากพ่อมด: ตัดปุ่มเล่นปกติ
   const w = WIZ.wiz, B = PLAYER, E = WIZ.el; WIZ.t += dt;
   if (WIZ.phase === 'end') { WIZ.endAt += dt; return; }
@@ -4923,7 +4934,7 @@ WIZ.update = (dt) => {
 };
 // แสงม่วงตรึงตัวเรา (วาดผ่าน GLOW ชนิด 5) · เรียกจาก MIND.update
 WIZ.drawGlow = (t) => {
-  if (!WIZ.lock || WIZ.phase === 'end') return;
+  if (!WIZ.lock || INTRO.on || WIZ.phase === 'end') return;
   const P = PLAYER, k = U.clamp(WIZ.phase === 'bind' ? WIZ.t / WIZ.tBind : 1, 0, 1), cy = P.y + (P.form === 'human' ? 1.0 : 0.35);
   for (let i = 0; i < 16; i++) {
     const a = t * 1.4 + i * Math.PI * 2 / 16, rr = (2.2 - 1.3 * k) , y = cy + Math.sin(t * 2 + i * 1.3) * 0.9 * (1.2 - k * 0.5);
@@ -5046,8 +5057,8 @@ STORY.drawGlow = (t) => {
 // ข้อมูล: TALK.data[id] = [[ผู้พูด 'm'|'f', ข้อความ (สตริงหรือฟังก์ชันคืนสตริง), action?]] · TALK.pick[คนที่คุย]() คืน id บทพูดตามสถานะเรื่อง (STORY.s) · TALK.acts[action] ทำเมื่อบรรทัดนั้นขึ้น
 // คนใหม่ที่คุยได้ = เพิ่ม TALK.people[id] = { kind: ชนิดร่างของคนนั้น, name, pick } + บทใน TALK.data (ไม่ต้องแตะตรรกะ)
 const TALK = { on: false, id: null, key: null, lines: [], i: 0, chars: 0, cps: 42, el: null, byKey: {}, ran: -1 };
-TALK.names = { m: 'มาร์ธา', f: 'ฟินน์' };
-TALK.cols = { m: '#ffd9a8', f: '#a8d4ff' };
+TALK.names = { m: 'มาร์ธา', f: 'ฟินน์', t: 'ฟินน์ · คิดในใจ' };   // t = ฟินน์คิดในใจ (กล่องสีน้ำเงินขอบประ ตัวเอียง)
+TALK.cols = { m: '#ffd9a8', f: '#a8d4ff', t: '#bcd0ff' };
 const _tkN = () => STORY.foodName();
 TALK.data = {
   'm.open': [
@@ -5057,6 +5068,8 @@ TALK.data = {
     ['f', 'ผมรู้ครับ'],
     ['m', 'แม่ไม่ได้ว่าอะไรหรอก แค่ท้องมันว่างจนไม่มีแรงลุกเท่านั้นเอง'],
     ['m', 'ระวังตัวด้วยนะลูก อย่าไปมีเรื่องกับใครเขา'],
+    ['m', 'เมื่อเช้าเจ้านกดำตัวนั้นมาเกาะหน้าบ้านอีกแล้ว มันมาทุกเช้าตั้งแต่ลูกยังเล็ก'],
+    ['t', 'แม่ไม่รู้ว่านั่นคือข้า…'],
     ['f', 'แม่รออยู่ที่นี่นะ เดี๋ยวผมไปหาอะไรมาให้', 'opened'],
   ],
   'm.wait': [
@@ -5088,11 +5101,13 @@ TALK.CSS = `
 #tkb .tn{font-weight:700;font-size:14px;margin-bottom:4px}
 #tkb .tt{font-size:17px;line-height:1.5;min-height:3em}
 #tkb .th{margin-top:6px;font-size:12px;opacity:.7;text-align:right}
+#tkb.tht{background:rgba(14,22,44,.9);border:2px dashed #8fb0f0}
+#tkb.tht .tt{font-style:italic;color:#d3e2ff}
 `;
 TALK.init = () => {
   const st = document.createElement('style'); st.textContent = TALK.CSS; document.head.appendChild(st);
   const z = document.createElement('div'); z.id = 'tk'; z.innerHTML = '<div id="tkb"><div class="tn"></div><div class="tt"></div><div class="th"></div></div>'; document.body.appendChild(z);
-  TALK.el = { root: z, name: z.querySelector('.tn'), txt: z.querySelector('.tt'), hint: z.querySelector('.th') };
+  TALK.el = { root: z, box: z.querySelector('#tkb'), name: z.querySelector('.tn'), txt: z.querySelector('.tt'), hint: z.querySelector('.th') };
   z.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); TALK.advance(); });
   window.addEventListener('keydown', (e) => {
     if (!TALK.on) return;
@@ -5118,6 +5133,7 @@ TALK.start = (key) => {
 TALK.show = () => {
   const L = TALK.lines[TALK.i], E = TALK.el; TALK.chars = 0;
   if (TALK.ran < TALK.i) { TALK.ran = TALK.i; if (L[2]) TALK.acts[L[2]](); }   // action ทำตอนบรรทัดขึ้น (ก่อนอ่านข้อความ เพื่อให้ข้อความอ้างผลได้)
+  E.box.classList.toggle('tht', L[0] === 't');
   E.name.textContent = TALK.names[L[0]]; E.name.style.color = TALK.cols[L[0]];
   E.hint.textContent = (TALK.i + 1) + '/' + TALK.lines.length + ' · ' + (UI.touch ? 'แตะ = ต่อ' : 'คลิก / Space / F = ต่อ · Esc = ข้าม');
   E.txt.textContent = '';
@@ -5143,7 +5159,7 @@ TALK.update = (dt) => {
 
 /* ---- 69-tutor.js ---- */
 // 69-tutor.js — TUT: บทสอนสกิลทีละอย่าง ขึ้นกลางล่างของจอ "ตามจังหวะที่ใช้จริง" (ไม่สอนทีเดียวตอนเริ่ม) · ครั้งเดียวต่ออย่าง (เซฟ SAVE.taught) · หายเองเมื่อทำสำเร็จ หรือหมดเวลา
-// ข้อมูลล้วน: TUT.list = [{ id, when: () => bool (เงื่อนไขเกิดเหตุ), lines: [['tip' | 'thought', ข้อความหรือฟังก์ชันคืนข้อความ]], ok: () => bool (ทำสำเร็จแล้วหาย), min?, max? }]
+// ข้อมูลล้วน: TUT.list = [{ id, when: () => bool (เงื่อนไขเกิดเหตุ), lines: [['tip' | 'thought', ข้อความหรือฟังก์ชันคืนข้อความ, เงื่อนไข? (ฟังก์ชัน: ขึ้นบรรทัดนี้เมื่อจริงตอนที่การ์ดขึ้น)]], onShow?: () => ทำตอนการ์ดขึ้น, ok: () => bool (ทำสำเร็จแล้วหาย), min?, max? }]
 //   tip = คำสอนปุ่ม (คอม + มือถือในข้อความเดียว) · thought = ฟินน์คิดในใจ (ตัวเอียง) · เรียงตามลำดับความสำคัญ: ตัวบนสุดที่เข้าเงื่อนไขขึ้นก่อน ตัวอื่นรอคิว
 // หลักการ: บอกปุ่มกับเหตุผล ไม่บอกคำตอบของปริศนา · ระหว่างคุย/ฉากพ่อมด: ซ่อน (นาฬิกานับถอยหยุด)
 const TUT = { cur: null, t: 0, taught: {}, el: null, ran: false, wasHut: false, _k: '' };
@@ -5158,7 +5174,8 @@ TUT.list = [
     lines: [['tip', () => _tuTouch('เดิน: WASD หรือลูกศร · วิ่ง: ค้าง Shift · กระโดด: Space', 'เดิน: ลากนิ้วที่ครึ่งซ้ายของจอ · วิ่ง: ค้างปุ่ม ⤓ · กระโดด: ปุ่ม ⤒')]],
     ok: () => TUT.ran, min: 3, max: 16 },
   { id: 'bakery', when: () => STORY.s.ch === 1 && !STORY.s.gotFood && !BAKERY.S.cut && !PLAYER.ctl && PLAYER.form === 'human' && TUT.nearBakery(7) && !STORY.inShop(),   // เข้าใกล้ร้านขนมปังครั้งแรก
-    lines: [['thought', 'ร้านปิด คนทำขนมปังก็ไม่อยู่… ช่องระบายควันสูงๆ บนผนังนั่น เข้าไปได้ แต่ข้าขึ้นไปไม่ถึง']], ok: () => false, min: 6, max: 8 },
+    lines: [['thought', 'ร้านปิด คนทำขนมปังก็ไม่อยู่… ช่องระบายควันสูงๆ บนผนังนั่น ข้าขึ้นไปไม่ถึง'], ['thought', 'ถ้าเป็นนก… ก็บินขึ้นไปถึง แต่ช่องนั่นปิดอยู่'], ['tip', () => 'แปลงเป็นเรเวน: ' + _tuTouch('กด R', 'กดปุ่มแปลงร่าง') + ' (ต้องยืนบนพื้น ไม่ได้บังคับจิตอยู่)']],
+    onShow: () => TUT.mark('formkey'), ok: () => false, min: 9, max: 12 },   // สอนปุ่มแปลงร่างตรงหน้าร้านก่อนบานเปิด (formkey = สอนปุ่มแล้ว)
   { id: 'camera', when: () => TUT.done('bakery') && STORY.s.ch === 1 && !STORY.s.gotFood && !BAKERY.S.cut && !PLAYER.ctl && TUT.nearBakery(9) && !STORY.inShop(),   // ต่อจากบทร้านขนมปัง: หน้าต่าง/ช่องอาจอยู่ด้านที่มองไม่เห็น -> สอนหมุนกล้อง/เลื่อนแผนที่ (สอนครั้งเดียว)
     lines: [['tip', () => _tuTouch('หมุนกล้อง: Z / C หรือกดเมาส์ขวาค้างแล้วลาก · เลื่อนแผนที่: ลากเมาส์ปุ่มกลาง หรือลากปุ่มซ้ายบนพื้นว่าง · กลับมาที่ตัว: Home · ซูม: ล้อเมาส์', 'หมุนกล้อง: ปุ่ม ⟲ ⟳ มุมขวาบน · เลื่อนแผนที่: ลากนิ้วเดียว · ซูม: ปุ่ม + − · กลับมาที่ตัว: ปุ่มเป้า')]],
     ok: () => CAM.used, min: 6, max: 20 },
@@ -5166,13 +5183,15 @@ TUT.list = [
     lines: [['thought', 'ข้าคุยกับสัตว์ได้มาตั้งแต่เด็ก… ไม่เคยบอกใคร'], ['tip', () => 'บังคับจิต: เข้าใกล้สิ่งที่เรืองแสงแล้วกด E (มือถือ: ปุ่ม "บังคับ")']],
     ok: () => !!PLAYER.ctl, min: 4, max: 18 },
   { id: 'mind', when: () => !!PLAYER.ctl,   // คุมหนูครั้งแรก
-    lines: [['tip', () => 'ตอนบังคับจิต ตัวเรานั่งนิ่งอยู่ที่เดิม ถ้ามีคนเห็นก็หลบไม่ทัน · กด Q (มือถือ: ปุ่ม ↺) เพื่อปล่อยกลับมาที่ตัวเรา']],
-    ok: () => !PLAYER.ctl, min: 5, max: 16 },
+    lines: [['thought', 'หนูพวกนี้เข้าออกร้านได้ทุกคืน… ต้องมีรูตรงโคนผนังสักที่', () => !!PLAYER.ctl && PLAYER.ctl.kindId === 'mouse' && STORY.s.ch === 1],   // คำใบ้ทางเข้า (ไม่ชี้ตำแหน่ง ให้ผู้เล่นหาเอง)
+      ['tip', () => 'ตอนบังคับจิต ตัวเรานั่งนิ่งอยู่ที่เดิม ถ้ามีคนเห็นก็หลบไม่ทัน · กด Q (มือถือ: ปุ่ม ↺) เพื่อปล่อยกลับมาที่ตัวเรา']],
+    ok: () => !PLAYER.ctl, min: 7, max: 18 },
   { id: 'rope', when: () => !!PLAYER.ctl && PLAYER.ctl.kindId === 'mouse' && !BAKERY.S.cut && BAKERY.hook && Math.hypot(PLAYER.ctl.x - BAKERY.hook.x, PLAYER.ctl.z - BAKERY.hook.z) < 3.2 && STORY.inShop(),   // ใกล้ตะขอเชือกในร้าน
     lines: [['tip', () => 'เชือกนี้รั้งบานระบายควันไว้ — ฟันหนูกัดขาดได้ · ' + _tuTouch('กด F ค้างไว้', 'แตะปุ่มมือค้างไว้') + ' จนเชือกขาด']],
     ok: () => BAKERY.S.cut || !PLAYER.ctl, min: 3, max: 22 },
   { id: 'form', when: () => !!BAKERY.ho && BAKERY.ho.open && STORY.s.ch === 1 && !STORY.s.gotFood && PLAYER.form === 'human' && TUT.nearBakery(14),   // บานเปิดแล้ว
-    lines: [['tip', () => 'บานเปิดแล้ว — ' + _tuTouch('กด R', 'กดปุ่มแปลงร่าง') + ' แปลงเป็นเรเวนแล้วบินเข้าทางช่องนั้น (ถ้ายังบังคับจิตอยู่ ปล่อยก่อน: ' + _tuTouch('Q', '↺') + ')']],
+    lines: [['thought', 'ช่องเปิดแล้ว!'],
+      ['tip', () => 'บานเปิดแล้ว — ' + _tuTouch('กด R', 'กดปุ่มแปลงร่าง') + ' แปลงเป็นเรเวนแล้วบินเข้าทางช่องนั้น (ถ้ายังบังคับจิตอยู่ ปล่อยก่อน: ' + _tuTouch('Q', '↺') + ')', () => !TUT.done('formkey')]],   // สอนปุ่มไปแล้วที่หน้าร้าน → เหลือแค่ความคิด
     ok: () => PLAYER.form === 'raven', min: 4, max: 25 },
   { id: 'fly', when: () => PLAYER.form === 'raven' && !PLAYER.ctl,   // เป็นเรเวนครั้งแรก
     lines: [['tip', () => _tuTouch('Space = กระพือบินขึ้น · Shift = ร่อนลง', 'ปุ่ม ⤒ = กระพือบินขึ้น · ปุ่ม ⤓ = ร่อนลง') + ' · บินเปลืองพลังเวท (แถบบนจอ) ลงยืนบนพื้นเพื่อฟื้น']],
@@ -5202,8 +5221,8 @@ TUT.init = () => {
   const el = TUT.el = document.createElement('div'); el.id = 'tu'; UI.root.appendChild(el);
 };
 TUT.show = (d) => {
-  TUT.cur = d; TUT.t = 0; TUT.mark(d.id);
-  TUT.el.innerHTML = d.lines.map(([k, t]) => '<p class="' + (k === 'thought' ? 'th' : 'tp') + '">' + (k === 'thought' ? '<b>ฟินน์คิดในใจ</b>' : '') + (typeof t === 'function' ? t() : t) + '</p>').join('');
+  TUT.cur = d; TUT.t = 0; TUT.mark(d.id); if (d.onShow) d.onShow();
+  TUT.el.innerHTML = d.lines.filter((l) => !l[2] || l[2]()).map(([k, t]) => '<p class="' + (k === 'thought' ? 'th' : 'tp') + '">' + (k === 'thought' ? '<b>ฟินน์คิดในใจ</b>' : '') + (typeof t === 'function' ? t() : t) + '</p>').join('');
   TUT.el.style.display = 'block'; void TUT.el.offsetWidth; TUT.el.classList.add('on');
 };
 TUT.hide = () => { TUT.cur = null; TUT.el.classList.remove('on'); const el = TUT.el; setTimeout(() => { if (!TUT.cur) el.style.display = 'none'; }, 500); };
@@ -5220,6 +5239,223 @@ TUT.update = (dt) => {
     return;
   }
   for (const q of TUT.list) if (!TUT.taught[q.id] && q.when()) { TUT.show(q); return; }
+};
+
+/* ---- 70-intro.js ---- */
+// 70-intro.js — INTRO: ฉากเปิดเกม (cutscene ~17 วิ) เล่นเฉพาะเริ่มเกมใหม่ (เซฟว่าง) ก่อนบทพูดกับแม่ · เซฟ SAVE.introSeen เมื่อจบ/ข้าม
+// เรื่องย่อ: เหนือทะเลเมฆรุ่งเช้า (เห็นเกาะลอยทั้งสาม + ชื่อเกม) → กล้องดิ่งลงทะลุเมฆตามเรเวนที่ร่อนวนลง → ลงจอดหน้าบ้านฟินน์ → แปลงร่างเป็นฟินน์ มองรอบตัว → เดินเข้าบ้าน → ส่งต่อบทพูดแม่
+// ทุกอย่างเป็นฟังก์ชันของเวลา INTRO.t (วินาทีตามเวลาเกม ไม่ใช่นาฬิกาจริง): INTRO.pose(t) = ตำแหน่ง/ท่าตัวเรา · INTRO.cam(t) = กล้อง (ใช้เฉพาะก่อนลงจอด) · ค่าปรับทั้งหมดอยู่ INTRO.cfg
+// ล็อกการควบคุมด้วย WIZ.lock (ระบบอื่นเช็กตัวนี้อยู่แล้ว: ปุ่ม/INTERACT/MIND/SENSE/GOALS/TUT/กล้องหมุน) + INTRO.on (WIZ.update ไม่ทำงานของฉากพ่อมด · PLAYER.save ไม่เซฟ)
+// หลังลงจอด (t >= tLand) กล้องกลับไปใช้ CAM.follow ปกติ ตามตัวฟินน์เข้าบ้าน (หลังคา/ผนังจางเองตามระบบบ้าน)
+// เมฆ = InstancedMesh ชิ้นเดียว (1 draw call) แผ่นแบนโปร่งแสง 3 ชั้น · ซ่อนเมื่อกล้องต่ำกว่าชั้นเมฆ
+const INTRO = {
+  on: false, t: 0, camOwn: false, phase: '', geo: null, clouds: null, el: null, skipped: false, form0: 1, cloudA: 0, sc0: 1, title: 0, white: 0, dark: 0,
+  cfg: {
+    cloudY: 36,                 // ความสูงชั้นเมฆ (กลางชั้น)
+    hiY: 72,                    // ความสูงเรเวนตอนเริ่ม
+    R0: 34, turns: 1.15,        // รัศมี/จำนวนรอบที่ร่อนวนก่อนลงจอด
+    farSpan: [270, 400],        // ซูมไกลสุด [จอแนวนอน, จอแนวตั้ง] (ให้เห็นเกาะทั้งสาม)
+    farTy: 50,                  // ความสูงจุดมองตอนไกลสุด
+    tDesc: 1.6,                 // เรเวนเริ่มลดระดับ
+    tLand: 10.0,                // ลงจอด (กล้องส่งต่อให้ CAM.follow ปกติ)
+    tForm: 10.4,                // เริ่มแปลงร่าง
+    look: [[11.0, 0], [11.5, 1.0], [11.9, 1.0], [12.7, -1.0], [13.1, -1.0], [13.7, 0]],   // [เวลา, มุมหันเทียบทิศหน้าประตู (เรเดียน)] ฟินน์มองซ้าย-ขวาเหมือนกลัวคนเห็น
+    tWalk: 13.8, speed: 3.1,    // เริ่มเดินเข้าบ้าน · ความเร็ว (หน่วย/วินาที)
+    tEnd: 17.3,                 // จบฉาก (ถึงที่ยืนข้างแม่แล้ว)
+    titleKeys: [[0.6, 0], [2.0, 1], [3.8, 1], [5.0, 0]],   // ชื่อเกม: ขึ้น → ค้าง → จาง
+    ravenBoost: 6.5,            // ขยายตัวเรเวนตอนไกล (ให้เห็นเป็นจุดดำบนเมฆ) ลดเหลือ 1 ภายใน ~7 วิ
+  },
+};
+const _inA = (a) => { while (a > Math.PI) a -= 2 * Math.PI; while (a < -Math.PI) a += 2 * Math.PI; return a; };
+const _inKeys = (k, t) => {   // ไล่ค่าระหว่างจุดคีย์ [เวลา, ค่า] แบบ smoothstep
+  if (t <= k[0][0]) return k[0][1]; if (t >= k[k.length - 1][0]) return k[k.length - 1][1];
+  for (let i = 0; i < k.length - 1; i++) if (t <= k[i + 1][0]) return U.lerp(k[i][1], k[i + 1][1], U.smooth((t - k[i][0]) / (k[i + 1][0] - k[i][0])));
+  return k[k.length - 1][1];
+};
+
+INTRO.CSS = `
+body.intro #ui{visibility:hidden}
+#in{position:fixed;left:0;top:0;right:0;bottom:0;display:none;z-index:9;touch-action:none;-webkit-user-select:none;user-select:none;overflow:hidden;font-family:system-ui,"Leelawadee UI",Tahoma,sans-serif}
+#in.on{display:block}
+#in-w,#in-d{position:absolute;left:0;top:0;right:0;bottom:0;opacity:0;pointer-events:none}
+#in-w{background:#f6f1ea}#in-d{background:#0a0710}
+#in-t{position:absolute;left:0;right:0;top:36%;text-align:center;color:#fff7ea;opacity:0;pointer-events:none;font:600 clamp(34px,9vw,96px)/1.1 "Palatino Linotype","Book Antiqua",Palatino,Georgia,"Times New Roman",serif;letter-spacing:.3em;text-indent:.3em;text-transform:uppercase;text-shadow:0 0 28px rgba(255,190,140,.6),0 0 6px rgba(255,220,180,.5),0 3px 0 rgba(40,18,36,.45)}
+#in-t i{display:block;width:min(46vw,420px);height:2px;margin:.35em auto 0;background:linear-gradient(90deg,rgba(255,230,190,0),rgba(255,230,190,.95),rgba(255,230,190,0))}
+#in-k{position:absolute;left:calc(14px + env(safe-area-inset-left,0px));top:calc(14px + env(safe-area-inset-top,0px));padding:8px 14px;border-radius:10px;background:rgba(18,10,34,.7);border:2px solid rgba(255,255,255,.55);color:#fff;font-size:14px;font-weight:700}
+`;
+
+INTRO.init = () => {
+  const st = document.createElement('style'); st.textContent = INTRO.CSS; document.head.appendChild(st);
+  const z = document.createElement('div'); z.id = 'in';
+  z.innerHTML = '<div id="in-w"></div><div id="in-d"></div><div id="in-t">Black Raven<i></i></div><div id="in-k">ข้าม ▸▸</div>';
+  document.body.appendChild(z);
+  INTRO.el = { root: z, w: z.querySelector('#in-w'), d: z.querySelector('#in-d'), t: z.querySelector('#in-t'), k: z.querySelector('#in-k') };
+  z.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); INTRO.skip(); });
+  window.addEventListener('keydown', (e) => {
+    if (!INTRO.on) return;
+    if (e.code === 'Space' || e.code === 'Escape' || e.code === 'Enter') { e.preventDefault(); INTRO.skip(); }
+  });
+  if (HASH.intro === 0 || HASH.islandSet || HASH.debugcam) return;
+  const sv = SAVE.read(), fresh = !sv.player && !sv.story && !sv.introSeen && !sv.ended && !PLAYER.loaded;   // เซฟเก่า (มีตำแหน่ง/เรื่อง/จบแล้ว) = ถือว่าดูแล้ว ไม่เล่น
+  if (fresh || HASH.intro === 1) INTRO.begin();
+};
+
+// ---- เรขาคณิต: คำนวณจากประตูบ้านฟินน์ (HUT.h) ----
+INTRO.buildGeo = () => {
+  const C = INTRO.cfg, h = HUT.h, d = h.ops.find((o) => o.kind === 'door'), w = WALLV[d.wall], nx = w.nx, nz = w.nz;
+  const fy = h.base + HOUSE.FY, gy = (x, z) => { const g = WORLD.groundAt(x, z); return g === null ? h.base : g; };
+  const L = [d.pos[0] + nx * 3.1, d.pos[2] + nz * 3.1], A = [d.pos[0] + nx * 0.9, d.pos[2] + nz * 0.9], B = [d.pos[0], d.pos[2]], I = [d.inPos[0], d.inPos[2]], S = [TOWN.start.x, TOWN.start.z];
+  const pts = [[L[0], gy(L[0], L[1]), L[1]], [A[0], gy(A[0], A[1]), A[1]], [B[0], fy, B[1]], [I[0], fy, I[1]], [S[0], fy, S[1]]];
+  const cum = [0]; for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][2] - pts[i - 1][2]));
+  const wide = R.w >= R.h, F = C.farSpan[wide ? 0 : 1], isl = WORLD.byId;
+  // ศูนย์กลางภาพไกล: กึ่งกลางเกาะทั้งสาม (ในระนาบจอ r,u)
+  let r0 = 1e9, r1 = -1e9, u0 = 1e9, u1 = -1e9;   // กรอบของเกาะทั้งสามในระนาบจอ (r ขวา, u ขึ้น) → จุดมองให้อยู่กลางกรอบ · จุดมองอยู่สูง farTy จึงเลื่อนไป (+ty,+ty) ให้พื้นอยู่กลางจอ
+  for (const s of WORLD.islands) { const r = (s.x - s.z) * Math.SQRT1_2, u = -(s.x + s.z) * Math.SQRT1_2; r0 = Math.min(r0, r - s.radius); r1 = Math.max(r1, r + s.radius); u0 = Math.min(u0, u - s.radius * 0.8); u1 = Math.max(u1, u + s.radius * 0.8); }
+  const rc = (r0 + r1) / 2, uc = (u0 + u1) / 2, cx = (rc - uc) * Math.SQRT1_2 + C.farTy, cz = (-rc - uc) * Math.SQRT1_2 + C.farTy;
+  INTRO.geo = { door: d, h, n: [nx, nz], L, pts, cum, total: cum[cum.length - 1], yaw0: Math.atan2(-nx, -nz), thEnd: Math.atan2(nz, nx), far: [cx, cz], F, fy,
+    dirSign: nx * 0 + 1, span: [[0, F], [2.5, F * 0.96], [6.0, F * 0.38], [8.5, wide ? 48 : 42], [C.tLand, wide ? 24 : 21]] };
+  INTRO.tdoor = C.tWalk + cum[2] / C.speed;
+};
+
+// ---- ท่า/ตำแหน่งตัวเราที่เวลา t (ฟังก์ชันล้วน) ----
+INTRO.pose = (t) => {
+  const C = INTRO.cfg, G = INTRO.geo, o = { x: G.L[0], y: G.pts[0][1], z: G.L[1], yaw: G.yaw0, fly: false };
+  if (t < C.tLand) {
+    const s = U.clamp(t / C.tLand, 0, 1), e = U.smooth(s), ay = 1 - U.smooth(U.clamp((t - C.tDesc) / (C.tLand - C.tDesc), 0, 1));
+    const r = C.R0 * Math.pow(1 - e, 1.15), th = G.thEnd - G.dirSign * C.turns * Math.PI * 2 * (1 - e);
+    o.x = G.L[0] + Math.cos(th) * r; o.z = G.L[1] + Math.sin(th) * r;
+    o.y = G.pts[0][1] + (C.hiY - G.pts[0][1]) * ay + Math.sin(t * 2.3) * 0.7 * ay; o.fly = true;
+    const t2 = Math.min(t + 0.06, C.tLand), t1 = Math.max(t - 0.06, 0);
+    if (t2 > t1 + 1e-4) {   // ท่าหันตามทิศบิน แล้วปรับเข้าหาประตูช่วงท้าย
+      const a = INTRO.pos2(t1), b = INTRO.pos2(t2), sp = Math.hypot(b[0] - a[0], b[1] - a[1]) / (t2 - t1);
+      const yt = sp > 0.3 ? Math.atan2(b[0] - a[0], b[1] - a[1]) : G.yaw0, k = U.smooth((t - (C.tLand - 1.2)) / 1.2);
+      o.yaw = yt + _inA(G.yaw0 - yt) * k;
+    }
+    return o;
+  }
+  if (t < C.tWalk) { o.yaw = G.yaw0 + _inKeys(C.look, t); return o; }
+  const s = Math.min((t - C.tWalk) * C.speed, G.total); let i = 1; while (i < G.pts.length - 1 && s > G.cum[i]) i++;
+  const f = (s - G.cum[i - 1]) / Math.max(1e-6, G.cum[i] - G.cum[i - 1]), p0 = G.pts[i - 1], p1 = G.pts[i];
+  o.x = U.lerp(p0[0], p1[0], f); o.y = U.lerp(p0[1], p1[1], f); o.z = U.lerp(p0[2], p1[2], f);
+  const mo = STORY.mother();
+  o.yaw = s >= G.total - 1e-3 && mo ? Math.atan2(mo.x - o.x, mo.z - o.z) : Math.atan2(p1[0] - p0[0], p1[2] - p0[2]);
+  return o;
+};
+INTRO.pos2 = (t) => {   // (x,z) ของเรเวนช่วงบิน
+  const C = INTRO.cfg, G = INTRO.geo, e = U.smooth(U.clamp(t / C.tLand, 0, 1)), r = C.R0 * Math.pow(1 - e, 1.15), th = G.thEnd - G.dirSign * C.turns * Math.PI * 2 * (1 - e);
+  return [G.L[0] + Math.cos(th) * r, G.L[1] + Math.sin(th) * r];
+};
+
+// ---- กล้องก่อนลงจอด ----
+INTRO.cam = (t) => {
+  const C = INTRO.cfg, G = INTRO.geo, p = INTRO.pose(t), w1 = U.smooth(U.clamp((t - 1.2) / 4.0, 0, 1)), w2 = U.smooth(U.clamp((t - 1.8) / 4.6, 0, 1));
+  // จุดมอง: ไล่จากกลางเกาะทั้งสามมาที่หน้าบ้านฟินน์ (ตามเรเวนแค่ ~35% กล้องไม่แกว่งตามวงบิน)
+  const tx = G.L[0] + (p.x - G.L[0]) * 0.35, tz = G.L[1] + (p.z - G.L[1]) * 0.35;
+  let ln = 0; { const k = G.span; ln = (() => { if (t <= k[0][0]) return k[0][1]; for (let i = 0; i < k.length - 1; i++) if (t <= k[i + 1][0]) return Math.exp(U.lerp(Math.log(k[i][1]), Math.log(k[i + 1][1]), U.smooth((t - k[i][0]) / (k[i + 1][0] - k[i][0])))); return k[k.length - 1][1]; })(); }
+  return { x: U.lerp(G.far[0], tx, w1), z: U.lerp(G.far[1], tz, w1), ty: U.lerp(C.farTy, p.y - 1.5, w2), span: ln };
+};
+
+// ---- เมฆ ----
+INTRO.buildClouds = () => {
+  const C = INTRO.cfg, cv = document.createElement('canvas'); cv.width = cv.height = 128;
+  const cx = cv.getContext('2d'), rg = U.rng(77);
+  const puff = (x, y, r, a) => { const g = cx.createRadialGradient(x, y, 0, x, y, r); g.addColorStop(0, 'rgba(255,255,255,' + a + ')'); g.addColorStop(0.6, 'rgba(255,255,255,' + (a * 0.7).toFixed(2) + ')'); g.addColorStop(1, 'rgba(255,255,255,0)'); cx.fillStyle = g; cx.fillRect(0, 0, 128, 128); };
+  for (let i = 0; i < 6; i++) puff(64 + (rg() - 0.5) * 36, 64 + (rg() - 0.5) * 26, 24 + rg() * 14, 0.8);   // แกนกลางนุ่ม
+  for (let i = 0; i < 16; i++) { const a = i / 16 * 6.283 + rg() * 0.3, d = 24 + rg() * 12; puff(64 + Math.cos(a) * d, 64 + Math.sin(a) * d * 0.72, 11 + rg() * 9, 0.95); }   // ก้อนนูนรอบขอบ (ขอบเป็นลอน ไม่เป็นวงรีเรียบ)
+  const tex = new THREE.CanvasTexture(cv), geo = new THREE.PlaneGeometry(1, 1); geo.rotateX(-Math.PI / 2);
+  const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, fog: false, opacity: 0 });
+  const layers = [{ y: C.cloudY - 3, n: 60, s: [70, 130], col: '#aebbd8' }, { y: C.cloudY, n: 62, s: [55, 110], col: '#ffffff' }, { y: C.cloudY + 3, n: 40, s: [34, 70], col: '#fff0e2' }];
+  const N = layers.reduce((a, l) => a + l.n, 0), im = new THREE.InstancedMesh(geo, mat, N), m = new THREE.Matrix4(), q = new THREE.Quaternion(), v = new THREE.Vector3(), sc = new THREE.Vector3(), col = new THREE.Color(), up = new THREE.Vector3(0, 1, 0);
+  let k = 0; const rng = U.rng(2026);
+  for (const L of layers) {
+    for (let i = 0, tries = 0; i < L.n && tries < 4000; tries++) {
+      const x = -430 + rng() * 860, z = -430 + rng() * 800, hx = x - (L.y), hz = z - (L.y);   // จุดพื้นที่แผ่นนี้บังจากกล้อง (กล้อง yaw 0: เลื่อน -H ทั้ง x และ z)
+      let ok = true; for (const s of WORLD.islands) if (Math.hypot(hx - s.x, hz - s.z) < s.radius * 0.8) { ok = false; break; }
+      if (!ok) continue;
+      const w = L.s[0] + rng() * (L.s[1] - L.s[0]);
+      q.setFromAxisAngle(up, rng() * 6.283); v.set(x, L.y + (rng() - 0.5) * 1.5, z); sc.set(w, 1, w * (0.45 + rng() * 0.45));
+      m.compose(v, q, sc); im.setMatrixAt(k, m); col.set(L.col).multiplyScalar(0.94 + rng() * 0.06); im.setColorAt(k, col); k++; i++;
+    }
+  }
+  im.count = k; im.instanceMatrix.needsUpdate = true; if (im.instanceColor) im.instanceColor.needsUpdate = true;
+  im.frustumCulled = false; im.castShadow = false; im.receiveShadow = false; im.renderOrder = 3; im.visible = false;
+  R.scene.add(im); INTRO.clouds = im;
+};
+
+INTRO.begin = () => {
+  if (INTRO.on) return;
+  INTRO.buildGeo(); INTRO.buildClouds();
+  const P = PLAYER, d = INTRO.geo.door; if (!d.open) HOUSE.toggle(HUT.h, d, true);
+  INTRO.on = true; INTRO.t = 0; INTRO.camOwn = true; INTRO.skipped = false; WIZ.lock = true; WIZ.phase = null;
+  INTRO.sc0 = RIG.raven.root.scale.x;
+  P.setForm('raven', true); P.rs = null; P.fade = 0; P.isl = WORLD.byId.home; P.ctl = null;
+  document.body.classList.add('intro'); INTRO.el.root.classList.add('on');
+  INTRO.update(0);
+};
+
+INTRO.setRavenScale = (k) => { const s = INTRO.sc0 * k, r = RIG.raven; r.root.scale.setScalar(s); if (r.ghost) r.ghost.root.scale.setScalar(s); };
+
+INTRO.update = (dt) => {
+  if (!INTRO.on) return;
+  const C = INTRO.cfg, P = PLAYER, G = INTRO.geo;
+  for (const k of ['mind', 'release', 'form', 'use', 'bag']) INPUT.pressed[k] = false;
+  if (INTRO.hold && dt > 0 && !INTRO._seek) dt = 0;   // (ตรวจ) แช่เวลาฉากไว้ถ่ายภาพ
+  INTRO.t += dt; const t = INTRO.t;
+  if (t >= C.tEnd) { INTRO.finish(false); return; }
+  // แปลงร่าง (ใช้เอฟเฟกต์เดิมของ FORM) · ถ้ากระโดดเวลาข้ามไปไกล ให้สลับร่างทันที
+  if (t >= C.tForm && P.form === 'raven' && !FORM.fx) {
+    if (t > C.tForm + FORM.dur) { P.setForm('human', true); INTRO.setRavenScale(1); }
+    else FORM.fx = { t: 0, to: 'human', swapped: false, x: P.x, y: P.y, z: P.z, seed: 1.7 };
+  }
+  if (t < C.tForm && P.form !== 'raven') { P.setForm('raven', true); }
+  const o = INTRO.pose(t), e = 0.04, a = INTRO.pose(Math.max(0, t - e)), b = INTRO.pose(t + e), dtt = t + e - Math.max(0, t - e);
+  P.x = o.x; P.y = o.y; P.z = o.z; P.isl = WORLD.byId.home; P.over = WORLD.byId.home;
+  P.vx = (b.x - a.x) / dtt; P.vy = (b.y - a.y) / dtt; P.vz = (b.z - a.z) / dtt;
+  if (Math.hypot(P.vx, P.vz) > 14) P.vx = P.vz = 0;
+  const dy = _inA(o.yaw - P.yaw);
+  P.yaw = dt > 0 && Math.abs(dy) < 1.6 ? P.yaw + dy * (1 - Math.exp(-10 * dt)) : o.yaw;
+  P.turnRate = dt > 0 ? U.clamp(dy / Math.max(dt, 0.016), -3, 3) * 0.5 : 0;
+  P.sit = false; P.ctl = null;
+  if (P.form === 'raven') {
+    P.state = o.fly ? 'fly' : 'ground'; INPUT.x = 0; INPUT.y = o.fly ? 0.6 : 0; INPUT.up = o.fly && t > C.tLand - 1.1; INPUT.down = false; P.energy = P.kind.energyMax;
+    INTRO.setRavenScale(1 + C.ravenBoost * (1 - U.smooth(U.clamp((t - 1.5) / 5.5, 0, 1))) * (t < C.tLand ? 1 : 0));
+  } else { P.state = 'ground'; INPUT.x = INPUT.y = 0; INPUT.up = INPUT.down = false; }
+  // กล้อง
+  if (t < C.tLand) {
+    const c = INTRO.cam(t);
+    CAM.tx = LOOK.focus.x = c.x; CAM.tz = LOOK.focus.z = c.z; CAM.ty = LOOK.focusY = LOOK.yFollow = c.ty; CAM.span = CAM.spanT = c.span;
+  } else if (INTRO.camOwn) {   // ลงจอด: ส่งกล้องให้ระบบปกติตามตัว (ซูมเข้าสู่ระยะเล่นเองนุ่มๆ)
+    INTRO.camOwn = false; const sp = CAM.span;
+    CAM.setKind(P.kind, false); CAM.setZoom(22, false); CAM.follow(0, true); CAM.span = sp; CAM.zlam = 3;
+  }
+  // เมฆ + จอขาว/ดำ + ชื่อเกม
+  const ty = t < C.tLand ? CAM.ty : -99, ca = U.smooth(U.clamp((ty - (C.cloudY - 8)) / 16, 0, 1));
+  INTRO.cloudA = ca; INTRO.clouds.visible = ca > 0.01; INTRO.clouds.material.opacity = ca * 0.96; INTRO.clouds.position.x = t * 1.4;
+  INTRO.white = t < C.tLand ? 0.88 * Math.pow(4 * ca * (1 - ca), 1.3) : 0;
+  INTRO.dark = INTRO.tdoor ? 0.7 * Math.exp(-Math.pow((t - (INTRO.tdoor + 0.12)) / 0.3, 2)) : 0;
+  INTRO.title = _inKeys(C.titleKeys, t);
+  const E = INTRO.el; E.w.style.opacity = INTRO.white.toFixed(3); E.d.style.opacity = INTRO.dark.toFixed(3);
+  E.t.style.opacity = INTRO.title.toFixed(3); E.t.style.transform = 'scale(' + (1 + 0.03 * Math.min(1, t / 5)).toFixed(4) + ')';
+  INTRO.phase = t < 4.6 ? 'above' : t < 7.6 ? 'through' : t < C.tLand ? 'glide' : t < C.tWalk ? 'land' : 'enter';
+};
+
+INTRO.skip = () => INTRO.finish(true);
+// จบฉาก: ตัวอยู่ในบ้าน ร่างคน หันหาแม่ · HUD/ควบคุมกลับมา · เซฟว่าดูแล้ว · ข้าม = กล้อง/โทนภาพกลับค่าปกติทันที
+INTRO.finish = (skipped) => {
+  if (!INTRO.on) return;
+  const P = PLAYER, G = INTRO.geo;
+  INTRO.on = false; INTRO.skipped = !!skipped; INTRO.phase = 'done'; WIZ.lock = false; WIZ.phase = null; FORM.fx = null;
+  document.body.classList.remove('intro'); INTRO.el.root.classList.remove('on');
+  INTRO.clouds.visible = false; INTRO.setRavenScale(1);
+  if (P.form !== 'human') P.setForm('human', true);
+  const mo = STORY.mother(), sx = TOWN.start.x, sz = TOWN.start.z;
+  P.setPos(sx, G.fy, sz); P.state = 'ground'; P.vx = P.vy = P.vz = 0; P.turnRate = 0; P.sit = false; P.energy = P.kind.energyMax;
+  P.yaw = mo ? Math.atan2(mo.x - sx, mo.z - sz) : 0;
+  INPUT.clear();
+  if (skipped || INTRO.camOwn) {
+    INTRO.camOwn = false; CAM.px = CAM.pz = CAM.pxT = CAM.pzT = 0; CAM.setKind(P.kind, true); CAM.follow(0, true); CAM.update(0); LOOK.focusY = CAM.ty; LOOK.update(0, true);
+  }
+  SAVE.write({ introSeen: 1 }); PLAYER.save();
 };
 
 /* ---- 72-ui.js ---- */
@@ -5556,7 +5792,7 @@ function initScene() {
   PLAYER.init();
   BODY.build(R.scene); GLOW.init(R.scene, BODY.list.length + 240);   // ร่างในโลก + จุดเรืองแสง/แสงพุ่ง/ควันแปลงร่าง (ต้องสร้างหลัง PROPS: ใช้ COLL)
   UI.init(); MIND.init();
-  SENSE.build(); SENSE.buildFx(R.scene); BAG.build(R.scene); WIZ.init(); GOALS.init(); STORY.init(); TALK.init(); TUT.init();   // ระบบมองเห็น/ได้ยิน · กระเป๋า+ของในโลก · ฉากพ่อมด (ต้องหลัง BODY/TOWN/UI)
+  SENSE.build(); SENSE.buildFx(R.scene); BAG.build(R.scene); WIZ.init(); GOALS.init(); STORY.init(); TALK.init(); TUT.init(); INTRO.init();   // ระบบมองเห็น/ได้ยิน · กระเป๋า+ของในโลก · ฉากพ่อมด (ต้องหลัง BODY/TOWN/UI)
   if (HASH.debugcam) {
     CAM.setRange({ min: 36, max: 620 }); CAM.user = 105;
     const s = WORLD.byId[HASH.island]; CAM.panTo(s.x, s.z, true); CAM.setZoom(HASH.zoom || 105, true);
@@ -5583,6 +5819,7 @@ function frame(now) {
   WIZ.update(dt);
   FORM.update(dt);
   PLAYER.update(dt);
+  INTRO.update(dt);
   SENSE.update(dt);
   BODY.update(dt);
   BAG.update();
@@ -5601,11 +5838,11 @@ function frame(now) {
   }
   RIG.update(RIG.player, PLAYER, PLAYER.ctl ? _IDLE : INPUT, dt); RIG.updateBlob(PLAYER, PLAYER.kind.scale);
   BODY.render(dt);
-  if (!HASH.debugcam) CAM.follow(dt, false);
+  if (!HASH.debugcam && !INTRO.camOwn) CAM.follow(dt, false);
   CAM.update(dt);
   SENSE.draw(dt);
   LOOK.update(dt);
-  LOOK.fitShadow(LOOK.focus.x, LOOK.focusY, LOOK.focus.z, CAM.viewW, CAM.viewH);
+  if (!(INTRO.on && INTRO.camOwn && CAM.span > 130)) LOOK.fitShadow(LOOK.focus.x, LOOK.focusY, LOOK.focus.z, CAM.viewW, CAM.viewH);   // ฉากเปิดเกมตอนซูมไกล: ไม่อัปเดตแผนที่เงา (กรอบเงากว้างจน draw call พุ่งเกิน 150)
   FX.update();
   TOWER.updateLights(dt);
   WEATHER.update();
@@ -5747,6 +5984,15 @@ DBG.hutPut = (lx, lz, yaw) => { const h = HUT.h; return DBG.setPlayer(h.x + lx, 
 DBG.resetStory = () => { for (const k of ['story', 'taught', 'goals2', 'seen', 'bag', 'used', 'bakery']) SAVE.write({ [k]: undefined }); return SAVE.read(); };
 DBG.tutMark = (...ids) => { ids.forEach((i) => TUT.mark(i)); if (TUT.cur) TUT.hide(); return TUT.taught; };   // (ตรวจ) ถือว่าสอนเรื่องนั้นแล้ว
 DBG.starter = () => { if (TALK.on) TALK.end(true); STORY.set('opened'); return STORY.s; };   // (ตรวจ) ข้ามบทพูดเปิดเกม
+// ---- ฉากเปิดเกม (70-intro.js) ----
+// intro() = สถานะ (เปิดอยู่ไหม · t · เฟส · ร่าง · ความหนาเมฆ · ความทึบชื่อเกม/จอขาว/จอดำ · ซูม · ปุ่มข้าม) · introSeek(t) = กระโดดไปเวลา t (ข้ามไปข้างหน้าเท่านั้น: ก้าวทีละเฟรมจนถึง t) · introSkip() = กดข้าม
+Object.defineProperty(DBG, 'introState', { enumerable: true, get: () => ({ on: INTRO.on, t: _f2(INTRO.t), phase: INTRO.phase, skipped: INTRO.skipped, form: PLAYER.form, cloudA: _f2(INTRO.cloudA), cloudsVisible: !!(INTRO.clouds && INTRO.clouds.visible), title: _f2(INTRO.title), white: _f2(INTRO.white), dark: _f2(INTRO.dark),
+  span: _f2(CAM.span), ty: _f2(CAM.ty), camOwn: INTRO.camOwn, lock: WIZ.lock, hud: !!document.body.classList.contains('intro'), skipBtn: INTRO.el ? getComputedStyle(INTRO.el.root).display !== 'none' : false, seen: !!SAVE.read().introSeen,
+  player: { x: _f2(PLAYER.x), y: _f2(PLAYER.y), z: _f2(PLAYER.z), yaw: _f2(PLAYER.yaw), state: PLAYER.state }, inside: HOUSE.inside ? HOUSE.inside.id : null, talk: TALK.on, calls: DBG.calls, maxCalls: DBG.maxCalls }) });
+DBG.intro = () => DBG.introState;
+DBG.introSkip = () => { INTRO.skip(); return DBG.introState; };
+DBG.introSeek = (t) => { if (!INTRO.on) return DBG.introState; INTRO._seek = true; while (INTRO.on && INTRO.t < t) { const d = Math.min(0.05, t - INTRO.t); if (d < 1e-4) break; FORM.update(d); INTRO.update(d); } INTRO._seek = false; return DBG.introState; };   // ก้าวเวลาของฉากไปข้างหน้า (เฟรมจริงยังไหลต่อได้ — ใช้คู่กับ introHold)
+DBG.introHold = (b) => { INTRO.hold = !!b; return INTRO.hold; };
 
 })();</script>
 </body>
