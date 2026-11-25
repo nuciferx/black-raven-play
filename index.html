@@ -1024,7 +1024,8 @@ WORLD.floorAt = (x, z, y, step, tags) => {
 // แปลน = { id, x, z (กลางห้อง), W (กว้างตามแกน x), D (ลึกตามแกน z) (ขนาดด้านใน), wallH, colors:{wall,roof,timber}, ridge,
 //   hatches:[{wall,at,w,v0,v1}] (บานระบายควันสูง · เปิดด้วยโค้ดของแปลน), doors:[{wall,at,w,h,locked}], windows:[{wall,at,w,h,sill,open}], vents:[{wall,at,w,v0,v1}] (ช่องชายคา), holes:[{wall,at,w,h}] (รูหนูที่ฐานผนัง),
 //   furniture:[{kind,x,z,rot?}], chimney:{x}, noChimney? (ไม่มีปล่องไฟ), baseColor? (สีฐานผนัง ปกติหิน), lift? (ยกพื้นสูงจากดิน), owner? ('hero' = บ้านของตัวเอก ไม่น่าสงสัย), resident? { kind, at:[x,z], yaw, tint } (คนที่อยู่ในบ้าน), exit? {x,z} (จุดที่ถูกไล่ออกมา เทียบกลางบ้าน) }   wall = 'N'|'S'|'E'|'W' · at = ตำแหน่งตามแนวผนังเทียบกลางผนัง (มองจากข้างนอก ซ้าย→ขวา = +)
-// บ้านทุกหลังแกนตรง (ไม่หมุน): กล้องไอโซเมตริกมองจากทิศ +x,+z ⇒ ผนัง S (+z) กับ E (+x) บังภายใน → ผนังสองด้านนั้นกับหลังคา/เพดาน/ปล่องอยู่ใน "ชุดที่จางได้" (fade)
+// บ้านทุกหลังแกนตรง (ไม่หมุน) แต่กล้องหมุนได้ทีละ 90° (26 พ.ย. 2569): ผนังแต่ละด้าน (N/S/E/W) เป็น mesh แยก (h.walls) จางเมื่อหันเข้าหากล้อง + กล้องอยู่ข้างใน (CAM.faces)
+// หลังคา/เพดาน/ปล่อง/คานตกแต่งอยู่ใน "ชุดที่จางได้" (fade) จางเมื่อกล้องอยู่ข้างในเท่านั้น · ของที่ติดผนังด้านไหน ใส่ใน h.wl[ด้านนั้น] (c.wl) ให้จางตามผนัง
 // ช่องเปิดแต่ละช่อง (op) = { id, kind:'door'|'window'|'vent'|'hole', open, a (0..1 ไล่ค่า), blocker (กล่อง SOLID ที่ปิดช่อง) }
 //   เรเวนผ่านได้: หน้าต่างที่เปิด · ช่องชายคา (เปิดเสมอ) · หนูผ่านได้: รูหนู (แท็ก small) · ประตู: คนเปิดจากข้างในได้เสมอ จากข้างนอกได้ถ้าไม่ล็อก
 const HOUSE = { list: [], byId: {}, FY: 0.12, T: 0.3, inside: null };
@@ -1053,8 +1054,8 @@ HOUSE.build = (plan, scene) => {
   const cWall = _hc(C.wall), cTim = _hc(C.timber), cStone = _hc(plan.baseColor || '#8f8a80'), cRoof = _hc(C.roof), cDark = _hc('#2a211c'), cFloor = _hc(C.floor || '#9a7a52');
   const tw = plan.tower, stone = !!plan.stone;   // tw = { k } = ชั้นของหอคอย · stone = ผนัง/พื้นหินก้อน (HOUSE.stoneRect)
   const h = { id: plan.id, cid: plan.cid || plan.id, flv: 1, plan, x: px, z: pz, base, W, D, WH, ops: [], slots: [], fade: 1, fadeT: 1, interior: [px - W / 2, px + W / 2, pz - D / 2, pz + D / 2], leaves: [], mats: {} };
-  const shell = new GB(), fade = new GB();
-  const pick = (wall) => (wall === 'S' || wall === 'E' ? fade : shell);
+  const shell = new GB(), fade = new GB(), wl = { N: new GB(), S: new GB(), E: new GB(), W: new GB() };
+  const pick = (wall) => wl[wall];
   // กล่องในพิกัดผนัง: u0..u1 (ตามผนัง) v0..v1 (สูงจากพื้นดิน) n0..n1 (ตั้งฉาก; 0 = ผิวนอก, ลบ = เข้าไปในผนัง) → [x0,x1,y0,y1,z0,z1]
   const wbox = (wall, u0, u1, v0, v1, n0, n1) => {
     const w = WALLV[wall], ax = px + w.ox * (w.nx ? W / 2 + T : 0) + (w.tx ? 0 : 0), az = pz + w.oz * (w.nz ? D / 2 + T : 0);
@@ -1172,14 +1173,20 @@ HOUSE.build = (plan, scene) => {
     K.draw(shell, fx, FY0, fz, w, d, f.rot, h);
   }
   h.slots.forEach((s, i) => { s.id = h.id + '.slot' + i; s.house = h.id; });
-  if (plan.build) plan.build(h, { shell, fade, wbox, vis, solid, scene, base, FY, T, W, D, WH, px, pz });   // ตัวตกแต่งเพิ่มของแปลน (หอคอย: ไฟ บันได พื้นกระเบื้อง แสงเรือง)
+  if (plan.build) plan.build(h, { shell, fade, wl, wbox, vis, solid, scene, base, FY, T, W, D, WH, px, pz });   // ตัวตกแต่งเพิ่มของแปลน (หอคอย: ไฟ บันได พื้นกระเบื้อง แสงเรือง)
 
   // ---- สร้าง mesh ----
-  h.mats.fade = new THREE.MeshLambertMaterial({ vertexColors: true });
+  // ชุดที่จางได้ = ผนัง 4 ด้าน + หลังคา รวมเป็น mesh เดียว (draw call เท่าเดิม) · แต่ละจุดยอดมีเลขช่อง aS (0=N 1=S 2=E 3=W 4=หลังคา) ความทึบรายช่อง = uniform uA
+  const mg = new GB(), slot = [];
+  [wl.N, wl.S, wl.E, wl.W, fade].forEach((g, i) => { for (const v of g.pos) mg.pos.push(v); for (const v of g.col) mg.col.push(v); for (let j = 0; j < g.pos.length / 3; j++) slot.push(i); });
+  const mgeo = mg.build(); mgeo.setAttribute('aS', new THREE.Float32BufferAttribute(slot, 1));
+  const sm = HOUSE.slotMat(); h.mats.fade = sm.mat; h.uA = sm.uA;
   if (tw) h.mats.shell = new THREE.MeshLambertMaterial({ vertexColors: true });   // ชั้นของหอคอยจางทั้งก้อนได้ (ชั้นที่สูงกว่าตัวที่คุม)
   h.shell = new THREE.Mesh(shell.build(), h.mats.shell || GFX.mat); h.shell.castShadow = h.shell.receiveShadow = true;
-  h.fadeMesh = new THREE.Mesh(fade.build(), h.mats.fade); h.fadeMesh.castShadow = h.fadeMesh.receiveShadow = true;
+  h.fadeMesh = new THREE.Mesh(mgeo, sm.mat); h.fadeMesh.castShadow = h.fadeMesh.receiveShadow = true; h.fadeMesh.customDepthMaterial = sm.dep;
   scene.add(h.shell, h.fadeMesh);
+  h.wf = {}; h.wa = {}; h.sh = 31;   // wf = 0..1 ความ "หันเข้าหากล้อง" ของผนังแต่ละด้าน (ไล่ค่า) · wa = ความทึบตอนนี้ · sh = บิตว่าช่องไหนทอดเงาอยู่
+  for (const w of ['N', 'S', 'E', 'W']) { h.wf[w] = CAM.faces(w) ? 1 : 0; h.wa[w] = 1; }
 
   // ---- บานหน้าต่าง/ประตู (แยกชิ้น หมุนได้) + ตัวโต้ตอบ ----
   for (const o of defs) {
@@ -1231,7 +1238,7 @@ HOUSE.makeLeaf = (h, o, scene) => {
     const gm = new THREE.Mesh(gl.build(), FX.mats.win.m); gm.castShadow = false; pivot.add(gm);
   }
   const m = new THREE.Mesh(g.build(), GFX.mat); m.castShadow = false; m.receiveShadow = false; pivot.add(m);
-  scene.add(root); o.leaf = { root, pivot, fadeWall: o.wall === 'S' || o.wall === 'E' };
+  scene.add(root); o.leaf = { root, pivot, };
   pivot.rotation.y = -o.a * 1.75; h.leaves.push(o);
 };
 const cIron = () => GFX.rgb('#3a3632');
@@ -1291,28 +1298,55 @@ HOUSE.saveState = () => {
   SAVE.write({ open: s });
 };
 
+// วัสดุชุดจางได้ของบ้าน: ความทึบรายช่อง (ผนัง N/S/E/W + หลังคา) ผ่าน attribute aS + uniform uA · dep = วัสดุเงา (ช่องที่ทึบ < 0.5 ไม่ทอดเงา)
+HOUSE.SLOTS = ['N', 'S', 'E', 'W'];
+HOUSE.slotMat = () => {
+  const uA = { value: new Float32Array([1, 1, 1, 1, 1]) };
+  const pre = '#include <common>\nattribute float aS;\nuniform float uA[5];\nvarying float vA;', fpre = '#include <common>\nvarying float vA;';
+  const fix = (sh, frag) => {
+    sh.uniforms.uA = uA;
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', pre).replace('#include <begin_vertex>', '#include <begin_vertex>\nvA = uA[int(aS + 0.5)];');
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', fpre).replace(frag[0], frag[0] + frag[1]);
+  };
+  const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
+  mat.onBeforeCompile = (sh) => fix(sh, ['#include <color_fragment>', '\nif (vA < 0.03) discard;\ndiffuseColor.a *= vA;']);
+  mat.customProgramCacheKey = () => 'houseslot';
+  const dep = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });
+  dep.onBeforeCompile = (sh) => fix(sh, ['#include <clipping_planes_fragment>', '\nif (vA < 0.5) discard;']);
+  dep.customProgramCacheKey = () => 'houseslotD';
+  return { mat, dep, uA };
+};
+
 // ทุกเฟรม: ไล่ค่าบาน · หลังคา/ผนังหน้ากล้องจางตามตัวที่กล้องตามอยู่
 HOUSE.update = (dt, cam) => {
   const ins = cam ? HOUSE.insideAt(cam.x, cam.y, cam.z) : null; HOUSE.inside = ins;
   const N = TOWER.cur = ins && ins.plan.tower ? ins.plan.tower.k : 0;   // ชั้นของหอคอยที่ตัวที่กล้องตามอยู่ (0 = ไม่ได้อยู่ในหอคอย)
   for (const h of HOUSE.list) {
-    const tk = h.plan.tower ? h.plan.tower.k : 0, tgt = (tk ? N === tk : h === ins) ? 0 : 1, ftgt = tk && N > 0 && tk > N ? 0 : 1, prevCast = h.fadeMesh.castShadow;
+    const tk = h.plan.tower ? h.plan.tower.k : 0, tgt = (tk ? N === tk : h === ins) ? 0 : 1, ftgt = tk && N > 0 && tk > N ? 0 : 1;
     h.fade = Math.abs(h.fade - tgt) < 0.003 ? tgt : U.damp(h.fade, tgt, 5.5, dt);
     h.flv = Math.abs(h.flv - ftgt) < 0.003 ? ftgt : U.damp(h.flv, ftgt, 5.5, dt);
-    const m = h.mats.fade, f = h.fade * h.flv;
-    if (f > 0.995) { m.transparent = false; m.opacity = 1; m.depthWrite = true; } else { m.transparent = true; m.opacity = f; m.depthWrite = f > 0.6; }
-    h.fadeMesh.visible = f > 0.03; h.fadeMesh.castShadow = f > 0.05;
     if (h.mats.shell) {
       const s = h.mats.shell, v = h.flv, pc = h.shell.castShadow;
       if (v > 0.995) { s.transparent = false; s.opacity = 1; s.depthWrite = true; } else { s.transparent = true; s.opacity = v; s.depthWrite = v > 0.6; }
       h.shell.visible = v > 0.03; h.shell.castShadow = v > 0.5;
       if (pc !== h.shell.castShadow) LOOK.sun.shadow.needsUpdate = true;
     }
-    if (prevCast !== h.fadeMesh.castShadow) LOOK.sun.shadow.needsUpdate = true;
+    // ผนังที่หันเข้าหากล้องจางเมื่อกล้องอยู่ข้างใน (h.fade 1→0) · ด้านอื่นทึบ · หลังคา = h.fade · ทั้งหมดคูณ flv (ชั้นหอคอยที่ถูกซ่อน)
+    let mn = 1, mx = 0, sh = 0; const A = h.uA.value, ids = HOUSE.SLOTS;
+    for (let i = 0; i < 4; i++) {
+      const w = ids[i], tf = CAM.faces(w) ? 1 : 0;
+      h.wf[w] = Math.abs(h.wf[w] - tf) < 0.003 ? tf : U.damp(h.wf[w], tf, 5.5, dt);
+      A[i] = h.wa[w] = h.flv * (1 - h.wf[w] * (1 - h.fade));
+    }
+    A[4] = h.fade * h.flv;
+    for (let i = 0; i < 5; i++) { mn = Math.min(mn, A[i]); mx = Math.max(mx, A[i]); if (A[i] >= 0.5) sh |= 1 << i; }
+    h.mats.fade.transparent = mn < 0.995;
+    h.fadeMesh.visible = mx > 0.03; h.fadeMesh.castShadow = mx >= 0.5;
+    if (sh !== h.sh) { h.sh = sh; LOOK.sun.shadow.needsUpdate = true; }
     for (const o of h.leaves) {
       const t = o.open ? 1 : 0; o.a = Math.abs(o.a - t) < 0.004 ? t : U.damp(o.a, t, 6, dt);
       o.leaf.pivot.rotation.y = -o.a * 1.75;
-      o.leaf.root.visible = (!o.leaf.fadeWall || h.fade > 0.5) && h.flv > 0.03;
+      o.leaf.root.visible = h.wa[o.wall] > 0.5 && h.flv > 0.03;
     }
   }
 };
@@ -1473,7 +1507,7 @@ BAKERY.plan = () => ({
 
 // ---- สร้างส่วนเพิ่มของร้าน (เรียกจาก HOUSE.build หลังเฟอร์นิเจอร์) ----
 BAKERY.build = (h, c) => {
-  const { shell, fade, vis, solid, wbox, base, FY, T, W, D, WH, px, pz, scene } = c, C = h.plan.colors, cWall = GFX.rgb(C.wall), cTim = GFX.rgb(C.timber), cStone = GFX.rgb('#8f8a80'), cFloor = GFX.rgb(C.floor);
+  const { shell, fade, wl, vis, solid, wbox, base, FY, T, W, D, WH, px, pz, scene } = c, C = h.plan.colors, cWall = GFX.rgb(C.wall), cTim = GFX.rgb(C.timber), cStone = GFX.rgb('#8f8a80'), cFloor = GFX.rgb(C.floor);
   BAKERY.h = h; const TH = 0.24, DH = 2.2;
   // ผนังกั้น: ท่อนล่าง (เตี้ย) อยู่ในชุดเปิดเห็นเสมอ · ท่อนบนอยู่ในชุดที่จางเมื่อเราอยู่ข้างใน (เห็นทะลุทุกห้อง) · แต่ชนและกันสายตาเต็มความสูง
   const seg = (x0, x1, z0, z1) => {
@@ -1500,14 +1534,14 @@ BAKERY.build = (h, c) => {
   vis(shell, [px + 0.15, px + W / 2, base + FY + 0.012, base + FY + 0.022, pz - D / 2, pz - 0.15], GFX.mul(cFloor, 0.72)); vis(shell, [px + 2.8, px + W / 2, base + FY + 0.024, base + FY + 0.034, pz - D / 2, pz - 3.4], GFX.mul(cFloor, 0.5));
   // หน้าร้าน (ผนัง S, ชุดที่จางได้): บานไม้พับลงเป็นเคาน์เตอร์ใต้หน้าต่าง (มีขนมปังวาง) + ป้ายรูปขนมปังแขวนข้างประตู
   { const wd = GFX.rgb('#7a5430'), bd = GFX.rgb('#c98a3c'), bd2 = GFX.rgb('#a8643a');
-    const bo = wbox('S', -4.35, -2.45, 0.96, 1.03, 0.0, 0.5); vis(fade, bo, GFX.mul(wd, 1.12));   // แผ่นเคาน์เตอร์ยื่นออกนอก 0.5
-    for (const u of [-4.25, -2.55]) { vis(fade, wbox('S', u - 0.05, u + 0.05, 0.55, 0.96, 0.0, 0.09), wd); vis(fade, wbox('S', u - 0.02, u + 0.02, 0.96, 1.5, 0.0, 0.5), GFX.mul(wd, 0.7)); }   // ไม้ค้ำใต้แผ่น + โซ่ยึดบานขึ้นไปที่ผนัง
-    [[-3.9, bd], [-3.4, bd2], [-2.9, bd]].forEach(([u, cc], i) => { const q = wbox('S', u, u, 1.12, 1.12, 0.25, 0.25); fade.ball([q[0], q[2], q[4]], 0.17, 0, cc, { sy: 0.6, jit: 0.1, seed: 80 + i }); });
-    vis(fade, wbox('S', 1.35, 1.45, 2.8, 2.9, 0.0, 0.95), wd);   // แขนยื่นรับป้าย
-    vis(fade, wbox('S', 1.0, 2.0, 2.86, 2.94, 0.9, 0.98), wd);   // คานขวางรับเชือกแขวน
-    vis(fade, wbox('S', 1.0, 2.0, 2.15, 2.62, 0.9, 0.97), GFX.mul(wd, 0.85)); vis(fade, wbox('S', 1.03, 1.97, 2.18, 2.59, 0.97, 1.0), GFX.rgb('#e6d3a8'));   // แผ่นป้าย + หน้าป้ายสีครีม
-    for (const u of [1.1, 1.9]) vis(fade, wbox('S', u - 0.015, u + 0.015, 2.62, 2.9, 0.92, 0.95), GFX.rgb('#d8c9a0'));   // เชือกแขวนป้าย
-    const sg = wbox('S', 1.5, 1.5, 2.38, 2.38, 1.03, 1.03); fade.ball([sg[0], sg[2], sg[4]], 0.2, 0, bd, { sy: 0.55, jit: 0.06, seed: 90 }); fade.ball([sg[0] - 0.22, sg[2] - 0.02, sg[4]], 0.13, 0, bd2, { sy: 0.6, seed: 91 }); fade.ball([sg[0] + 0.22, sg[2] - 0.02, sg[4]], 0.13, 0, bd2, { sy: 0.6, seed: 92 });   // รูปขนมปัง 3 ก้อน
+    const bo = wbox('S', -4.35, -2.45, 0.96, 1.03, 0.0, 0.5); vis(wl.S, bo, GFX.mul(wd, 1.12));   // แผ่นเคาน์เตอร์ยื่นออกนอก 0.5
+    for (const u of [-4.25, -2.55]) { vis(wl.S, wbox('S', u - 0.05, u + 0.05, 0.55, 0.96, 0.0, 0.09), wd); vis(wl.S, wbox('S', u - 0.02, u + 0.02, 0.96, 1.5, 0.0, 0.5), GFX.mul(wd, 0.7)); }   // ไม้ค้ำใต้แผ่น + โซ่ยึดบานขึ้นไปที่ผนัง
+    [[-3.9, bd], [-3.4, bd2], [-2.9, bd]].forEach(([u, cc], i) => { const q = wbox('S', u, u, 1.12, 1.12, 0.25, 0.25); wl.S.ball([q[0], q[2], q[4]], 0.17, 0, cc, { sy: 0.6, jit: 0.1, seed: 80 + i }); });
+    vis(wl.S, wbox('S', 1.35, 1.45, 2.8, 2.9, 0.0, 0.95), wd);   // แขนยื่นรับป้าย
+    vis(wl.S, wbox('S', 1.0, 2.0, 2.86, 2.94, 0.9, 0.98), wd);   // คานขวางรับเชือกแขวน
+    vis(wl.S, wbox('S', 1.0, 2.0, 2.15, 2.62, 0.9, 0.97), GFX.mul(wd, 0.85)); vis(wl.S, wbox('S', 1.03, 1.97, 2.18, 2.59, 0.97, 1.0), GFX.rgb('#e6d3a8'));   // แผ่นป้าย + หน้าป้ายสีครีม
+    for (const u of [1.1, 1.9]) vis(wl.S, wbox('S', u - 0.015, u + 0.015, 2.62, 2.9, 0.92, 0.95), GFX.rgb('#d8c9a0'));   // เชือกแขวนป้าย
+    const sg = wbox('S', 1.5, 1.5, 2.38, 2.38, 1.03, 1.03); wl.S.ball([sg[0], sg[2], sg[4]], 0.2, 0, bd, { sy: 0.55, jit: 0.06, seed: 90 }); wl.S.ball([sg[0] - 0.22, sg[2] - 0.02, sg[4]], 0.13, 0, bd2, { sy: 0.6, seed: 91 }); wl.S.ball([sg[0] + 0.22, sg[2] - 0.02, sg[4]], 0.13, 0, bd2, { sy: 0.6, seed: 92 });   // รูปขนมปัง 3 ก้อน
   }
   BAKERY.buildHatch(h, c);
 };
@@ -1562,7 +1596,7 @@ BAKERY.update = (dt) => {
   const e = BAKERY.e, hr = TIME.hour;
   // ไล่ค่าบาน · เชือก
   const t = ho.open ? 1 : 0; ho.a = Math.abs(ho.a - t) < 0.004 ? t : U.damp(ho.a, t, ho.open ? BAKERY.cfg.fall * 2.4 : 3.5, dt);
-  ho.leaf.pivot.rotation.x = ho.a * 1.5; ho.leaf.root.visible = h.flv > 0.03 && (ho.wall !== 'S' && ho.wall !== 'E' || h.fade > 0.5);
+  ho.leaf.pivot.rotation.x = ho.a * 1.5; ho.leaf.root.visible = h.flv > 0.03 && h.wa[ho.wall] > 0.5;
   const g = S.slack ? BAKERY.ropeGeo.slack : BAKERY.ropeGeo.taut; if (BAKERY.ropeMesh.geometry !== g) BAKERY.ropeMesh.geometry = g;
   BAKERY.ropeMesh.visible = h.flv > 0.03;
   if (!e || e.state === 'gone') return;
@@ -1624,7 +1658,7 @@ HUT.plan = () => ({
 
 // ---- ส่วนเพิ่มของกระท่อม (เรียกจาก HOUSE.build) ----
 HUT.build = (h, c) => {
-  const { fade, shell, vis, wbox, base, FY, T, W, D, WH, px, pz, scene } = c, plan = h.plan, S = GFX.rgb(plan.colors.roof), mud = GFX.rgb(plan.colors.wall), dkMud = GFX.mul(mud, 0.72);
+  const { fade, shell, wl, vis, wbox, base, FY, T, W, D, WH, px, pz, scene } = c, plan = h.plan, S = GFX.rgb(plan.colors.roof), mud = GFX.rgb(plan.colors.wall), dkMud = GFX.mul(mud, 0.72);
   HUT.h = h;
   // หลังคามุงฟาง: ชายคากลมหนา 2 ด้าน + ขอบจั่ว 4 เส้น + สันกลม + กระจุกฟางบนสัน + ร่องฟางบนลาด
   const cy = base + WH + 0.1, rh = plan.ridge, rw = W + 2 * T + 0.9, rd = D + 2 * T + 1.0, dk = GFX.mul(S, 0.8), md = GFX.mul(S, 0.95), x0 = px - rw / 2 - 0.05, x1 = px + rw / 2 + 0.05;
@@ -1638,7 +1672,7 @@ HUT.build = (h, c) => {
   }
   // ผนังไม้สาน: ร่องแนวนอน (เว้นช่องประตู) ทั้งด้านในและด้านนอก
   for (const wall of ['N', 'S', 'E', 'W']) {
-    const g = wall === 'S' || wall === 'E' ? fade : shell, L = (wall === 'S' || wall === 'N' ? W + 2 * T : D) / 2, ops = h.ops.filter((o) => o.wall === wall);
+    const g = wl[wall], L = (wall === 'S' || wall === 'N' ? W + 2 * T : D) / 2, ops = h.ops.filter((o) => o.wall === wall);
     for (const v of [0.95, 1.2, 1.9, 2.15, 2.4]) HOUSE.cut(-L + 0.15, L - 0.15, v, v + 0.06, ops, (u0, u1, v0, v1) => vis(g, wbox(wall, u0, u1, v0, v1, -T - 0.02, 0.025), dkMud));
   }
   // เปลวไฟ: mesh เรืองแสงชิ้นเดียว (ไม่รับแสง ค่าสีเกิน 1 ให้ post ย่อ) วางกลางกองไฟ
@@ -2867,6 +2901,128 @@ DN.update = (snap) => {
   b.a = U.smooth(p.s / 0.25) * (p.sun ? 1 : 0.85);
   if (sun) { const m = Math.max(sun.r, sun.g, sun.b, 1e-3), k = 1.1 + 0.5 * (1 - DN.night); b.col = [sun.r / m * k, sun.g / m * k, sun.b / m * k]; }
 };
+
+/* ---- 46-camera.js ---- */
+// 46-camera.js — CAM: กล้อง isometric (orthographic) ตามผู้เล่นแบบนุ่ม · หมุนทีละ 90° (4 มุม) · เลื่อนแผนที่ด้วยมือ (pan) · ซูม
+// ทิศ right/fwd (บนพื้น) คำนวณจากมุม CAM.yaw ทุกเฟรม — ทิศเดิน/AI อ่านจาก CAM.right/CAM.fwd ที่เดียว (BODIES.toWorld/fromWorld)
+// span = ความกว้างของโลก (หน่วยโลก) ที่เห็นตามด้านที่แคบกว่าของจอ -> มือถือแนวตั้งไม่ใหญ่เกิน
+// user = span ที่ผู้เล่นตั้งเอง (อยู่ในช่วงของชนิดร่าง) · auto = ซูมออกเพิ่มอัตโนมัติเมื่อบินสูง (สัดส่วน) · spanT = user*(1+auto) ภายในช่วง
+const CAM = {
+  span: 105, spanT: 105, user: 105, auto: 0, minSpan: 36, maxSpan: 620, dist: 520,
+  tx: 0, tz: 0, ty: 0, _G: 0, lead: 0.25, lambda: 4.5,
+  zlam: 9,                      // ความไวการไล่ค่าซูม (เปลี่ยนเป้าหมาย/ร่างแล้วช่วงซูมเปลี่ยน = ลดชั่วคราวให้ไล่ช้าๆ)
+  inK: 0, inZoom: 0.3, zIn: 0.3,          // ข้างในบ้าน: ซูมเข้า 30%
+  autoMax: 0.45, autoAlt: 40,   // บินสูง autoAlt หน่วยเหนือพื้น -> ซูมออกเพิ่ม autoMax (45%) · ไม่เกินช่วงซูมของชนิดร่าง
+  bias: 0.5,                    // จุดมองอยู่สัดส่วนนี้ระหว่างพื้นข้างใต้ (0) กับตัวนก (1)
+  dir: new THREE.Vector3(1, 1, 1).normalize(),     // ทิศจากจุดมองไปหากล้อง
+  right: [Math.SQRT1_2, -Math.SQRT1_2],      // ขวาของจอบนพื้น (x,z) — คำนวณใหม่จาก yaw ใน CAM.setBasis
+  fwd: [-Math.SQRT1_2, -Math.SQRT1_2],       // "ขึ้นจอ" บนพื้น (ห่างจากกล้อง)
+  sinE: 1 / Math.sqrt(3),                    // sin ของมุมเงยกล้อง
+  viewW: 1, viewH: 1,
+  // หมุนกล้อง: yaw = มุมจริงตอนนี้ (ต่อเนื่อง) · yawT = มุมเป้าหมาย (เป็นพหุคูณของ 90° เสมอ ยกเว้นตอนลากเมาส์ขวา) · มุม 0 = กล้องอยู่ทาง +x,+z เหมือนเดิม
+  yaw: 0, yawT: 0, yawLam: 8.5, rotLive: false, used: false,   // yawLam 8.5 = หมุน 90° เสร็จราว 0.35 วินาที
+  // เลื่อนแผนที่ด้วยมือ: px,pz = ระยะที่กล้องเลื่อนออกจากตัว (หน่วยโลก) · pxT,pzT = เป้าหมาย (0 = กลับมาตามตัว) · panMax = ระยะสูงสุด
+  px: 0, pz: 0, pxT: 0, pzT: 0, panMax: 25, panLam: 3.5, dragging: false,
+};
+const _QP = Math.PI / 2;
+CAM.setBasis = () => {
+  const phi = Math.PI / 4 + CAM.yaw, c = Math.cos(phi), s = Math.sin(phi), ch = Math.sqrt(1 - CAM.sinE * CAM.sinE);
+  CAM.dir.set(c * ch, CAM.sinE, s * ch);
+  CAM.right[0] = s; CAM.right[1] = -c; CAM.fwd[0] = -c; CAM.fwd[1] = -s;
+};
+// ผนังทิศนี้ ('N'|'S'|'E'|'W') หันเข้าหากล้องไหม (ใช้มุมเป้าหมาย ไม่ใช่มุมระหว่างหมุน -> ผนังเริ่มจางทันทีที่สั่งหมุน แล้วไล่ค่าตาม)
+CAM._wn = { S: [0, 1], N: [0, -1], E: [1, 0], W: [-1, 0] };
+CAM.faces = (wall) => { const n = CAM._wn[wall], phi = Math.PI / 4 + CAM.yawT; return n[0] * Math.cos(phi) + n[1] * Math.sin(phi) > 0.01; };
+CAM.yawIdx = () => ((Math.round(CAM.yawT / _QP) % 4) + 4) % 4;
+// หมุนทีละ 90° · n = +1 → โลกหมุนทวนเข็มบนจอ (ปุ่ม ⟲ / Z) · -1 → ตามเข็ม (ปุ่ม ⟳ / C)
+CAM.rotate = (n) => { CAM.yawT = (Math.round(CAM.yawT / _QP) + n) * _QP; CAM.used = true; };
+CAM.setYaw = (i, instant) => { CAM.yawT = i * _QP; if (instant) { CAM.yaw = CAM.yawT; CAM.setBasis(); } };
+CAM.zoomBy = (f) => { CAM.setZoom(CAM.user * f); CAM.used = true; };
+// เลื่อนแผนที่: dx,dy = พิกเซลที่ลากบนจอ (ฉากเลื่อนตามนิ้ว) · จำกัดระยะ panMax · กล้อง+จุดโฟกัสขยับเท่ากันทันที (ไม่หน่วงตามนิ้ว)
+CAM.pan = (dx, dy) => {
+  const k = CAM.upp(), ky = (dy * k) / CAM.sinE;
+  CAM.panWorld(-dx * k * CAM.right[0] + ky * CAM.fwd[0], -dx * k * CAM.right[1] + ky * CAM.fwd[1], true);
+  CAM.used = true;
+};
+CAM.panWorld = (mx, mz, direct) => {
+  let nx = CAM.px + mx, nz = CAM.pz + mz; const m = Math.hypot(nx, nz);
+  if (m > CAM.panMax) { nx *= CAM.panMax / m; nz *= CAM.panMax / m; }
+  const ax = nx - CAM.px, az = nz - CAM.pz;
+  CAM.px = CAM.pxT = nx; CAM.pz = CAM.pzT = nz; CAM.tx += ax; CAM.tz += az;
+  if (direct) { LOOK.focus.x += ax; LOOK.focus.z += az; }
+};
+CAM.homePan = () => { CAM.pxT = CAM.pzT = 0; };   // กลับมาตามตัว (ไล่ค่านุ่ม)
+CAM.upp = () => CAM.span / Math.min(R.w, R.h);   // หน่วยโลกต่อ CSS px
+
+CAM.clampT = () => {
+  const b = WORLD.bounds, m = 70;
+  CAM.tx = U.clamp(CAM.tx, b.minX - m, b.maxX + m); CAM.tz = U.clamp(CAM.tz, b.minZ - m, b.maxZ + m);
+};
+CAM.panTo = (x, z, instant) => {
+  CAM.tx = x; CAM.tz = z; CAM.clampT();
+  if (instant) { LOOK.focus.x = CAM.tx; LOOK.focus.z = CAM.tz; }
+};
+// ช่วงซูมมาจากชนิดร่างของผู้เล่น (นก: ซูมออกสุดเห็นหลายเกาะ) · โหมดดีบักใช้ช่วงกว้าง
+CAM.setRange = (z) => { CAM.minSpan = z.min; CAM.maxSpan = z.max; CAM.user = U.clamp(CAM.user, z.min, z.max); };
+CAM.setZoom = (v, instant) => {
+  CAM.user = U.clamp(v, CAM.minSpan, CAM.maxSpan);
+  CAM.spanT = U.clamp(CAM.user * (1 + CAM.auto), CAM.minSpan, CAM.maxSpan);
+  if (instant) CAM.span = CAM.spanT;
+};
+// ตามตัวที่ผู้เล่นคุมอยู่ (เป้าหมายที่บังคับจิต หรือตัวเรา): จุดมองอยู่กึ่งกลางระหว่างพื้นข้างใต้กับตัว + นำหน้าตามความเร็วเล็กน้อย
+// อยู่ข้างในบ้าน = ซูมเข้า (inK ไล่ค่า 0..1) ให้เห็นรายละเอียดตัวเล็ก
+CAM.follow = (dt, snap) => {
+  const P = PLAYER.camBody(), f0 = WORLD.floorAt(P.x, P.z, P.y + 0.3, 0), G = f0 !== null ? f0 : WORLD.nearestIsland(P.x, P.z).baseH + 1;
+  CAM._G = snap ? G : U.damp(CAM._G, G, 5, dt);
+  // เลื่อนแผนที่ค้างอยู่ -> กลับมาตามตัวเมื่อตัวละครเริ่มขยับ (หรือกำลังฉากพ่อมด) · snap = กลับทันที
+  const mv = Math.hypot(INPUT.x, INPUT.y) > 0.08 || Math.hypot(P.vx, P.vz) > 0.8;
+  if ((mv && !CAM.dragging) || WIZ.lock) { CAM.pxT = CAM.pzT = 0; }
+  if (snap) { CAM.px = CAM.pz = CAM.pxT = CAM.pzT = 0; } else if (!CAM.dragging) { CAM.px = U.damp(CAM.px, CAM.pxT, CAM.panLam, dt); CAM.pz = U.damp(CAM.pz, CAM.pzT, CAM.panLam, dt); if (Math.abs(CAM.px - CAM.pxT) < 1e-3) CAM.px = CAM.pxT; if (Math.abs(CAM.pz - CAM.pzT) < 1e-3) CAM.pz = CAM.pzT; }
+  CAM.tx = P.x + P.vx * CAM.lead + CAM.px; CAM.tz = P.z + P.vz * CAM.lead + CAM.pz; CAM.ty = U.lerp(CAM._G, P.y, CAM.bias);
+  CAM.auto = CAM.autoMax * U.smooth(Math.max(0, P.y - CAM._G) / CAM.autoAlt);
+  const ih = HOUSE.insideAt(P.x, P.y, P.z), ins = ih ? 1 : 0;
+  if (ih) CAM.zIn = R.w < R.h && ih.plan.inZoomP !== undefined ? ih.plan.inZoomP : (ih.plan.inZoom !== undefined ? ih.plan.inZoom : CAM.inZoom);   // ห้องกว้าง (หอคอย) ซูมเข้าน้อยกว่าบ้านเล็ก · จอตั้งซูมออกแทน (ห้องกว้างกว่าจอ)
+  CAM.inK = snap ? ins : U.damp(CAM.inK, ins, 3.5, dt);
+  CAM.spanT = U.clamp(CAM.user * (1 + CAM.auto) * (1 - CAM.zIn * CAM.inK), CAM.minSpan, CAM.maxSpan);
+  LOOK.yFollow = CAM.ty;
+  if (snap) { LOOK.focus.x = CAM.tx; LOOK.focus.z = CAM.tz; CAM.span = CAM.spanT; }
+};
+// ตั้งช่วงซูมตามชนิดร่างที่คุมอยู่ (ตัวเล็ก = ซูมเข้า) · instant = ทันที ไม่งั้นไล่ค่าช้าๆ (zlam ต่ำแล้วค่อยกลับ)
+CAM.setKind = (K, instant) => {
+  CAM.setRange(K.zoom);
+  CAM.user = U.clamp(K.zoom.def * (R.w < R.h ? 0.82 : 1), K.zoom.min, K.zoom.max);
+  CAM.zlam = instant ? 9 : 3;
+  if (instant) CAM.setZoom(CAM.user, true);
+};
+// ลากหน้าจอ dx,dy พิกเซล -> ขยับจุดโฟกัสทันที
+CAM.drag = (dx, dy) => {
+  const k = CAM.upp(), f = LOOK.focus, ky = (dy * k) / CAM.sinE;
+  const mx = -dx * k * CAM.right[0] + ky * CAM.fwd[0], mz = -dx * k * CAM.right[1] + ky * CAM.fwd[1];
+  CAM.tx += mx; CAM.tz += mz; CAM.clampT();
+  f.x = CAM.tx; f.z = CAM.tz;
+};
+
+CAM.update = (dt) => {
+  const f = LOOK.focus;
+  if (Math.abs(CAM.yaw - CAM.yawT) > 1e-4) { CAM.yaw = U.damp(CAM.yaw, CAM.yawT, CAM.yawLam, dt); if (Math.abs(CAM.yaw - CAM.yawT) < 1e-3) CAM.yaw = CAM.yawT; }
+  CAM.setBasis();
+  const lam = HASH.debugcam ? 2.0 : CAM.lambda;
+  f.x = U.damp(f.x, CAM.tx, lam, dt); f.z = U.damp(f.z, CAM.tz, lam, dt);
+  if (Math.abs(f.x - CAM.tx) < 1e-3) f.x = CAM.tx;
+  if (Math.abs(f.z - CAM.tz) < 1e-3) f.z = CAM.tz;
+  if (CAM.zlam < 9) CAM.zlam = Math.min(9, CAM.zlam + dt * 3);
+  CAM.span = U.damp(CAM.span, CAM.spanT, CAM.zlam, dt);
+  if (Math.abs(CAM.span - CAM.spanT) < 1e-3) CAM.span = CAM.spanT;
+  const a = R.w / R.h;
+  if (a >= 1) { CAM.viewH = CAM.span; CAM.viewW = CAM.span * a; } else { CAM.viewW = CAM.span; CAM.viewH = CAM.span / a; }
+  const c = R.cam;
+  c.left = -CAM.viewW / 2; c.right = CAM.viewW / 2; c.top = CAM.viewH / 2; c.bottom = -CAM.viewH / 2;
+  c.updateProjectionMatrix();
+  c.position.set(f.x, LOOK.focusY, f.z).addScaledVector(CAM.dir, CAM.dist);
+  c.lookAt(f.x, LOOK.focusY, f.z);
+  c.updateMatrixWorld();
+};
+
 
 /* ---- 50-rig.js ---- */
 // 50-rig.js — ตัวละครประกอบจากชิ้นส่วน low poly (สีแบน สร้างจากโค้ด) + อนิเมชันจากโค้ด
@@ -5003,6 +5159,9 @@ TUT.list = [
     ok: () => TUT.ran, min: 3, max: 16 },
   { id: 'bakery', when: () => STORY.s.ch === 1 && !STORY.s.gotFood && !BAKERY.S.cut && !PLAYER.ctl && PLAYER.form === 'human' && TUT.nearBakery(7) && !STORY.inShop(),   // เข้าใกล้ร้านขนมปังครั้งแรก
     lines: [['thought', 'ร้านปิด คนทำขนมปังก็ไม่อยู่… ช่องระบายควันสูงๆ บนผนังนั่น เข้าไปได้ แต่ข้าขึ้นไปไม่ถึง']], ok: () => false, min: 6, max: 8 },
+  { id: 'camera', when: () => TUT.done('bakery') && STORY.s.ch === 1 && !STORY.s.gotFood && !BAKERY.S.cut && !PLAYER.ctl && TUT.nearBakery(9) && !STORY.inShop(),   // ต่อจากบทร้านขนมปัง: หน้าต่าง/ช่องอาจอยู่ด้านที่มองไม่เห็น -> สอนหมุนกล้อง/เลื่อนแผนที่ (สอนครั้งเดียว)
+    lines: [['tip', () => _tuTouch('หมุนกล้อง: Z / C หรือกดเมาส์ขวาค้างแล้วลาก · เลื่อนแผนที่: ลากเมาส์ปุ่มกลาง หรือลากปุ่มซ้ายบนพื้นว่าง · กลับมาที่ตัว: Home · ซูม: ล้อเมาส์', 'หมุนกล้อง: ปุ่ม ⟲ ⟳ มุมขวาบน · เลื่อนแผนที่: ลากนิ้วเดียว · ซูม: ปุ่ม + − · กลับมาที่ตัว: ปุ่มเป้า')]],
+    ok: () => CAM.used, min: 6, max: 20 },
   { id: 'mouse', when: () => !PLAYER.ctl && !TUT.done('mind') && TUT.mouseNear(8),   // เห็นหนูเรืองแสงใกล้ๆ
     lines: [['thought', 'ข้าคุยกับสัตว์ได้มาตั้งแต่เด็ก… ไม่เคยบอกใคร'], ['tip', () => 'บังคับจิต: เข้าใกล้สิ่งที่เรืองแสงแล้วกด E (มือถือ: ปุ่ม "บังคับ")']],
     ok: () => !!PLAYER.ctl, min: 4, max: 18 },
@@ -5099,6 +5258,12 @@ UI.CSS = `
 #bn.on{opacity:1;transition:opacity .15s}
 #ts{position:fixed;left:50%;top:calc(80px + env(safe-area-inset-top,0px));transform:translateX(-50%);padding:8px 16px;border-radius:10px;background:rgba(8,12,22,.62);color:#fff;font-size:14px;line-height:1.4;font-weight:600;max-width:92vw;text-align:center;opacity:0;transition:opacity .5s;pointer-events:none;text-shadow:0 1px 2px rgba(0,0,0,.5)}
 #ts.on{opacity:1;transition:opacity .2s}
+#cp{position:fixed;right:calc(12px + env(safe-area-inset-right,0px));top:calc(134px + env(safe-area-inset-top,0px));display:none;grid-template-columns:repeat(2,38px);gap:6px;pointer-events:none}
+.touch #cp{display:grid}
+.cb{width:38px;height:38px;border-radius:50%;background:rgba(8,12,22,.55);border:2px solid rgba(255,255,255,.6);pointer-events:auto;display:flex;align-items:center;justify-content:center;box-sizing:border-box;color:#fff;font:700 22px/1 system-ui,sans-serif;box-shadow:0 2px 6px rgba(0,0,0,.3)}
+.cb.on{background:rgba(255,255,255,.45)}
+.cb svg{width:22px;height:22px;stroke:#fff;fill:none;stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
+@media (max-height:520px){#cp{top:calc(84px + env(safe-area-inset-top,0px));right:calc(64px + env(safe-area-inset-right,0px));grid-template-columns:repeat(6,38px)}}
 .touch #jz{display:block}.touch #jb{display:block;opacity:.55}.touch #jb.act{opacity:1}.touch .ub{display:flex}.touch #ux{display:flex}
 #hint{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);padding:8px 16px;border-radius:10px;background:rgba(8,12,22,.5);color:#fff;font-size:14px;line-height:1.4;font-weight:600;white-space:nowrap;max-width:94vw;overflow:hidden;text-overflow:ellipsis;transition:opacity 1.8s;opacity:1;text-shadow:0 1px 2px rgba(0,0,0,.5)}
 #hint.off{opacity:0}.touch #hint{display:none}
@@ -5109,6 +5274,8 @@ UI.SVG_DOWN = '<svg viewBox="0 0 24 24"><path d="M12 3v14M5 11l7 7 7-7M5 21h14"/
 UI.SVG_BACK = '<svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.6-5.9M4 4v5h5"/></svg>';
 UI.SVG_WING = '<svg viewBox="0 0 24 24"><path d="M12 3l2.2 6.3L21 12l-6.8 2.7L12 21l-2.2-6.3L3 12l6.8-2.7z"/></svg>';   // ประกาย = พลังเวท
 UI.SVG_HAND = '<svg viewBox="0 0 24 24"><path d="M8 13V5.5a1.5 1.5 0 0 1 3 0V11m0-1V4.5a1.5 1.5 0 0 1 3 0V11m0-1V6a1.5 1.5 0 0 1 3 0v8c0 4-2.5 6-6 6s-5-2-6.5-5l-1.5-3a1.4 1.4 0 0 1 2.4-1.4L8 13"/></svg>';
+UI.SVG_ROT = '<svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.6-5.9M20 4v5h-5"/></svg>';   // ลูกศรวนตามเข็ม (ปุ่ม ⟳) · ปุ่ม ⟲ ใช้พลิกซ้ายขวาด้วย CSS
+UI.SVG_HOME = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="6"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>';
 UI.SVG_FORM = '<svg viewBox="0 0 24 24"><path d="M4 8h13l-3-3M20 16H7l3 3"/></svg>';
 
 UI.init = () => {
@@ -5117,7 +5284,7 @@ UI.init = () => {
   root.innerHTML = '<div id="eh"><span>' + UI.SVG_WING + '</span><div id="eb"><i id="ef"></i></div></div>' +
     '<div id="jz"></div><div id="jb"><div id="jk"></div></div>' +
     '<div class="ub" id="bu">' + UI.SVG_UP + '</div><div class="ub" id="bd">' + UI.SVG_DOWN + '</div><div id="ux"></div>' +
-    '<div id="hint">WASD เดิน · Space กระโดด · F ใช้/คุย · ล้อเมาส์ = ซูม</div><div id="tg"></div><div id="us"></div><div id="bn"></div><div id="ts"></div><div id="fd"></div>';
+    '<div id="hint">WASD เดิน · Space กระโดด · F ใช้/คุย · Z C หมุนกล้อง · ล้อเมาส์ = ซูม</div><div id="tg"></div><div id="us"></div><div id="bn"></div><div id="ts"></div><div id="fd"></div>';
   document.body.appendChild(root);
   const g = (id) => root.querySelector('#' + id), E = UI.els;
   E.eh = g('eh'); E.ef = g('ef'); E.jz = g('jz'); E.jb = g('jb'); E.jk = g('jk'); E.bu = g('bu'); E.bd = g('bd'); E.ux = g('ux'); E.hint = g('hint'); E.fd = g('fd'); E.tg = g('tg'); E.us = g('us'); E.bn = g('bn'); E.ts = g('ts');
@@ -5126,6 +5293,7 @@ UI.init = () => {
   E.bpos = UI.addButton({ id: 'mind', label: '<b>บังคับ</b>', onDown: () => { INPUT.pressed.mind = true; } });
   E.buse = UI.addButton({ id: 'use', svg: UI.SVG_HAND, onDown: () => { INPUT.pressed.use = true; } });
   E.bform = UI.addButton({ id: 'form', svg: UI.SVG_FORM, onDown: () => { INPUT.pressed.form = true; } });
+  UI.initCamPanel();
   E.brel.classList.add('off'); E.bpos.classList.add('off'); E.buse.classList.add('off');
   E.eh.title = 'พลังเวท';
   UI.initStick();
@@ -5134,6 +5302,20 @@ UI.init = () => {
   if (HASH.touch || coarse) UI.setTouch(true);
   window.addEventListener('pointerdown', (e) => { if (e.pointerType === 'touch') UI.setTouch(true); }, true);
   window.addEventListener('resize', UI.layout); UI.layout();
+};
+// ปุ่มกล้อง (เฉพาะมือถือ/สัมผัส) มุมขวาบนใต้ปุ่มกระเป๋า: ⟲ ⟳ หมุน 90° · + − ซูมทีละขั้น · ⌖ เลื่อนแผนที่กลับมาตามตัว · แตะครั้งเดียวทำงาน (ไม่ใช่กดค้าง)
+UI.initCamPanel = () => {
+  const cp = document.createElement('div'); cp.id = 'cp'; UI.root.appendChild(cp);
+  const add = (id, html, fn, style) => {
+    const b = document.createElement('div'); b.className = 'cb'; b.id = 'cb_' + id; b.innerHTML = html; if (style) b.style.cssText = style; cp.appendChild(b);
+    b.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); b.classList.add('on'); if (!WIZ.lock) fn(); });
+    const off = () => b.classList.remove('on'); b.addEventListener('pointerup', off); b.addEventListener('pointercancel', off); b.addEventListener('pointerleave', off);
+  };
+  add('rl', UI.SVG_ROT, () => CAM.rotate(1), 'transform:scaleX(-1)');   // ⟲ หมุนทวนเข็ม (ตรงกับ Z)
+  add('rr', UI.SVG_ROT, () => CAM.rotate(-1));                           // ⟳ หมุนตามเข็ม (ตรงกับ C)
+  add('zi', '+', () => CAM.zoomBy(1 / 1.3));
+  add('zo', '−', () => CAM.zoomBy(1.3));
+  add('hm', UI.SVG_HOME, () => CAM.homePan());
 };
 UI.setTouch = (b) => { if (UI.touch === b) return; UI.touch = b; document.body.classList.toggle('touch', b); UI.layout(); };
 
@@ -5226,113 +5408,49 @@ UI.badge = (text) => { const E = UI.els; E.bn.textContent = text; E.bn.classList
 UI.toast = (text, ms) => { const E = UI.els; E.ts.textContent = text; E.ts.classList.add('on'); UI._tt = (ms || 4000) / 1000; };
 
 /* ---- 90-main.js ---- */
-// 90-main.js — กล้อง isometric (ไม่หมุน) ตามผู้เล่นแบบนุ่ม · ซูมมือ/pinch · main loop · ตัวช่วยตรวจ (__dbg)
+// 90-main.js — ปุ่ม/เมาส์/นิ้วของกล้อง (กล้องอยู่ 46-camera.js) · main loop · ตัวช่วยตรวจ (__dbg)
 // #debugcam=1 = กล้องดีบักลากเลื่อนแบบ M1 (ไม่ตามผู้เล่น) · __dbg.panTo ใช้ได้เฉพาะโหมดนั้น
 const DBG = window.__dbg = { fps: 0, calls: 0, maxCalls: 0, tris: 0, frames: 0, w: 0, h: 0, hash: HASH, ready: false, look: null, focus: null, span: 0, scale: 0, rt: '' };
 
-// span = ความกว้างของโลก (หน่วยโลก) ที่เห็นตามด้านที่แคบกว่าของจอ -> มือถือแนวตั้งไม่ใหญ่เกิน
-// user = span ที่ผู้เล่นตั้งเอง (อยู่ในช่วงของชนิดร่าง) · auto = ซูมออกเพิ่มอัตโนมัติเมื่อบินสูง (สัดส่วน) · spanT = user*(1+auto) ภายในช่วง
-const CAM = {
-  span: 105, spanT: 105, user: 105, auto: 0, minSpan: 36, maxSpan: 620, dist: 520,
-  tx: 0, tz: 0, ty: 0, _G: 0, lead: 0.25, lambda: 4.5,
-  zlam: 9,                      // ความไวการไล่ค่าซูม (เปลี่ยนเป้าหมาย/ร่างแล้วช่วงซูมเปลี่ยน = ลดชั่วคราวให้ไล่ช้าๆ)
-  inK: 0, inZoom: 0.3, zIn: 0.3,          // ข้างในบ้าน: ซูมเข้า 30%
-  autoMax: 0.45, autoAlt: 40,   // บินสูง autoAlt หน่วยเหนือพื้น -> ซูมออกเพิ่ม autoMax (45%) · ไม่เกินช่วงซูมของชนิดร่าง
-  bias: 0.5,                    // จุดมองอยู่สัดส่วนนี้ระหว่างพื้นข้างใต้ (0) กับตัวนก (1)
-  dir: new THREE.Vector3(1, 1, 1).normalize(),
-  right: [Math.SQRT1_2, -Math.SQRT1_2],      // ขวาของจอบนพื้น (x,z)
-  fwd: [-Math.SQRT1_2, -Math.SQRT1_2],       // "ขึ้นจอ" บนพื้น (ห่างจากกล้อง)
-  sinE: 1 / Math.sqrt(3),                    // sin ของมุมเงยกล้อง
-  viewW: 1, viewH: 1,
-};
-CAM.upp = () => CAM.span / Math.min(R.w, R.h);   // หน่วยโลกต่อ CSS px
-
-CAM.clampT = () => {
-  const b = WORLD.bounds, m = 70;
-  CAM.tx = U.clamp(CAM.tx, b.minX - m, b.maxX + m); CAM.tz = U.clamp(CAM.tz, b.minZ - m, b.maxZ + m);
-};
-CAM.panTo = (x, z, instant) => {
-  CAM.tx = x; CAM.tz = z; CAM.clampT();
-  if (instant) { LOOK.focus.x = CAM.tx; LOOK.focus.z = CAM.tz; }
-};
-// ช่วงซูมมาจากชนิดร่างของผู้เล่น (นก: ซูมออกสุดเห็นหลายเกาะ) · โหมดดีบักใช้ช่วงกว้าง
-CAM.setRange = (z) => { CAM.minSpan = z.min; CAM.maxSpan = z.max; CAM.user = U.clamp(CAM.user, z.min, z.max); };
-CAM.setZoom = (v, instant) => {
-  CAM.user = U.clamp(v, CAM.minSpan, CAM.maxSpan);
-  CAM.spanT = U.clamp(CAM.user * (1 + CAM.auto), CAM.minSpan, CAM.maxSpan);
-  if (instant) CAM.span = CAM.spanT;
-};
-// ตามตัวที่ผู้เล่นคุมอยู่ (เป้าหมายที่บังคับจิต หรือตัวเรา): จุดมองอยู่กึ่งกลางระหว่างพื้นข้างใต้กับตัว + นำหน้าตามความเร็วเล็กน้อย
-// อยู่ข้างในบ้าน = ซูมเข้า (inK ไล่ค่า 0..1) ให้เห็นรายละเอียดตัวเล็ก
-CAM.follow = (dt, snap) => {
-  const P = PLAYER.camBody(), f0 = WORLD.floorAt(P.x, P.z, P.y + 0.3, 0), G = f0 !== null ? f0 : WORLD.nearestIsland(P.x, P.z).baseH + 1;
-  CAM._G = snap ? G : U.damp(CAM._G, G, 5, dt);
-  CAM.tx = P.x + P.vx * CAM.lead; CAM.tz = P.z + P.vz * CAM.lead; CAM.ty = U.lerp(CAM._G, P.y, CAM.bias);
-  CAM.auto = CAM.autoMax * U.smooth(Math.max(0, P.y - CAM._G) / CAM.autoAlt);
-  const ih = HOUSE.insideAt(P.x, P.y, P.z), ins = ih ? 1 : 0;
-  if (ih) CAM.zIn = R.w < R.h && ih.plan.inZoomP !== undefined ? ih.plan.inZoomP : (ih.plan.inZoom !== undefined ? ih.plan.inZoom : CAM.inZoom);   // ห้องกว้าง (หอคอย) ซูมเข้าน้อยกว่าบ้านเล็ก · จอตั้งซูมออกแทน (ห้องกว้างกว่าจอ)
-  CAM.inK = snap ? ins : U.damp(CAM.inK, ins, 3.5, dt);
-  CAM.spanT = U.clamp(CAM.user * (1 + CAM.auto) * (1 - CAM.zIn * CAM.inK), CAM.minSpan, CAM.maxSpan);
-  LOOK.yFollow = CAM.ty;
-  if (snap) { LOOK.focus.x = CAM.tx; LOOK.focus.z = CAM.tz; CAM.span = CAM.spanT; }
-};
-// ตั้งช่วงซูมตามชนิดร่างที่คุมอยู่ (ตัวเล็ก = ซูมเข้า) · instant = ทันที ไม่งั้นไล่ค่าช้าๆ (zlam ต่ำแล้วค่อยกลับ)
-CAM.setKind = (K, instant) => {
-  CAM.setRange(K.zoom);
-  CAM.user = U.clamp(K.zoom.def * (R.w < R.h ? 0.82 : 1), K.zoom.min, K.zoom.max);
-  CAM.zlam = instant ? 9 : 3;
-  if (instant) CAM.setZoom(CAM.user, true);
-};
-// ลากหน้าจอ dx,dy พิกเซล -> ขยับจุดโฟกัสทันที
-CAM.drag = (dx, dy) => {
-  const k = CAM.upp(), f = LOOK.focus, ky = (dy * k) / CAM.sinE;
-  const mx = -dx * k * CAM.right[0] + ky * CAM.fwd[0], mz = -dx * k * CAM.right[1] + ky * CAM.fwd[1];
-  CAM.tx += mx; CAM.tz += mz; CAM.clampT();
-  f.x = CAM.tx; f.z = CAM.tz;
-};
-
-CAM.update = (dt) => {
-  const f = LOOK.focus;
-  const lam = HASH.debugcam ? 2.0 : CAM.lambda;
-  f.x = U.damp(f.x, CAM.tx, lam, dt); f.z = U.damp(f.z, CAM.tz, lam, dt);
-  if (Math.abs(f.x - CAM.tx) < 1e-3) f.x = CAM.tx;
-  if (Math.abs(f.z - CAM.tz) < 1e-3) f.z = CAM.tz;
-  if (CAM.zlam < 9) CAM.zlam = Math.min(9, CAM.zlam + dt * 3);
-  CAM.span = U.damp(CAM.span, CAM.spanT, CAM.zlam, dt);
-  if (Math.abs(CAM.span - CAM.spanT) < 1e-3) CAM.span = CAM.spanT;
-  const a = R.w / R.h;
-  if (a >= 1) { CAM.viewH = CAM.span; CAM.viewW = CAM.span * a; } else { CAM.viewW = CAM.span; CAM.viewH = CAM.span / a; }
-  const c = R.cam;
-  c.left = -CAM.viewW / 2; c.right = CAM.viewW / 2; c.top = CAM.viewH / 2; c.bottom = -CAM.viewH / 2;
-  c.updateProjectionMatrix();
-  c.position.set(f.x, LOOK.focusY, f.z).addScaledVector(CAM.dir, CAM.dist);
-  c.lookAt(f.x, LOOK.focusY, f.z);
-  c.updateMatrixWorld();
-};
-
-// canvas รับเฉพาะ: ล้อเมาส์ / pinch (สองนิ้วบน canvas) ซูม · ลากเลื่อนกล้องเฉพาะ #debugcam=1 · จอยและปุ่มอยู่ใน 72-ui.js (คนละ element คนละ pointerId)
+// canvas รับ: คลิก/แตะสั้น = เลือกเป้าหมาย · ลาก (>8px) ปุ่มซ้าย/ปุ่มกลาง/นิ้วเดียว = เลื่อนแผนที่ (pan) · ลากปุ่มขวา = หมุนกล้อง (ปล่อยแล้วเข้ามุม 90° ที่ใกล้สุด)
+// ล้อเมาส์ = ซูม · ไม่มี pinch (ล็อกจอ ซูมด้วยปุ่ม + − ใน 72-ui.js) · ลากเลื่อนแบบดีบัก (CAM.drag) เฉพาะ #debugcam=1
+// คีย์: Z = หมุนทวนเข็ม · C = ตามเข็ม · Home = กล้องกลับมาตามตัว · ดับเบิลคลิก = กลับมาตามตัว · จอยและปุ่มอยู่ใน 72-ui.js (คนละ element คนละ pointerId)
 function initInput() {
-  const cv = R.canvas, ptrs = new Map();
-  let pinch = 0, pinchSpan = 0;
-  const dist = () => { const p = [...ptrs.values()]; return Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y) || 1; };
+  const cv = R.canvas, ptrs = new Map(), PAN_PX = 8, ROT_PX = 200;   // ลากปุ่มขวา 200px = หมุน 90°
+  let rot = null;
+  const panning = () => { for (const q of ptrs.values()) if (q.pan) return true; return false; };
   cv.addEventListener('pointerdown', (e) => {
-    cv.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, t0: e.timeStamp, multi: ptrs.size > 0 });
-    if (ptrs.size === 2) { pinch = dist(); pinchSpan = CAM.user; for (const q of ptrs.values()) q.multi = true; }
+    cv.setPointerCapture(e.pointerId);
+    if (e.pointerType === 'mouse' && e.button === 2) { if (!HASH.debugcam && !WIZ.lock) rot = { id: e.pointerId, x0: e.clientX, yaw0: CAM.yaw }; return; }
+    ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, t0: e.timeStamp, multi: ptrs.size > 0, pan: false, mid: e.pointerType === 'mouse' && e.button === 1 });
+    if (ptrs.size > 1) for (const q of ptrs.values()) { q.multi = true; q.pan = false; }   // หลายนิ้ว = ไม่ทำอะไร (ไม่ pinch ไม่ pan)
+    if (!panning()) CAM.dragging = false;
   });
+  cv.addEventListener('mousedown', (e) => { if (e.button === 1) e.preventDefault(); });
   cv.addEventListener('pointermove', (e) => {
+    if (rot && e.pointerId === rot.id) { CAM.yaw = CAM.yawT = rot.yaw0 + (e.clientX - rot.x0) * (Math.PI / 2 / ROT_PX); CAM.used = true; CAM.rotLive = true; return; }
     const p = ptrs.get(e.pointerId); if (!p) return;
-    const dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
-    if (ptrs.size === 1) { if (HASH.debugcam) CAM.drag(dx, dy); }
-    else if (ptrs.size === 2) CAM.setZoom(pinchSpan * pinch / dist());
+    let dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
+    if (ptrs.size !== 1 || WIZ.lock) return;
+    if (HASH.debugcam) { CAM.drag(dx, dy); return; }
+    if (!p.pan && (p.mid || Math.hypot(e.clientX - p.x0, e.clientY - p.y0) > PAN_PX)) { p.pan = true; CAM.dragging = true; dx = e.clientX - p.x0; dy = e.clientY - p.y0; }   // เริ่มลาก: ชดเชยระยะที่ลากไปแล้ว ภาพไม่กระตุก
+    if (p.pan) CAM.pan(dx, dy);
   });
-  // แตะ/คลิกสั้นๆ ไม่ลาก ไม่ใช่ pinch = เลือก/บังคับจิตเป้าหมายที่จุดนั้น (MIND.pick) · เมาส์ปุ่มซ้ายเท่านั้น
+  // แตะ/คลิกสั้นๆ ไม่ลาก = เลือก/บังคับจิตเป้าหมายที่จุดนั้น (MIND.pick) · เมาส์ปุ่มซ้ายเท่านั้น
   const up = (e) => {
+    if (rot && e.pointerId === rot.id) { rot = null; CAM.rotLive = false; CAM.yawT = Math.round(CAM.yaw / (Math.PI / 2)) * (Math.PI / 2); return; }
     const p = ptrs.get(e.pointerId); ptrs.delete(e.pointerId);
-    if (p && !p.multi && e.type === 'pointerup' && (e.pointerType !== 'mouse' || e.button === 0) && Math.hypot(e.clientX - p.x0, e.clientY - p.y0) < 10 && e.timeStamp - p.t0 < 600) MIND.pick(e.clientX, e.clientY, e.pointerType);
+    if (!panning()) CAM.dragging = false;
+    if (p && !p.multi && !p.pan && e.type === 'pointerup' && (e.pointerType !== 'mouse' || e.button === 0) && Math.hypot(e.clientX - p.x0, e.clientY - p.y0) < PAN_PX + 2 && e.timeStamp - p.t0 < 600) MIND.pick(e.clientX, e.clientY, e.pointerType);
   };
   UI.onTap = (x, y) => MIND.pick(x, y, 'touch');
   cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
+  cv.addEventListener('dblclick', () => CAM.homePan());
   cv.addEventListener('wheel', (e) => { e.preventDefault(); CAM.setZoom(CAM.user * Math.exp(e.deltaY * 0.0015)); }, { passive: false });
+  window.addEventListener('keydown', (e) => {
+    if (e.ctrlKey || e.metaKey || e.altKey || e.repeat || WIZ.lock || HASH.debugcam) return;
+    if (e.code === 'KeyZ') CAM.rotate(1); else if (e.code === 'KeyC') CAM.rotate(-1); else if (e.code === 'Home') { CAM.homePan(); e.preventDefault(); }
+  });
   INPUT.init();
 }
 
@@ -5411,6 +5529,10 @@ DBG.keysToward = (x, z, dead = 0.6) => { const P = PLAYER.camBody(), dx = x - P.
 // ตัวช่วยตรวจ: ทิศบนจอ (x ขวา+, y ขึ้นจอ+, ยาว 1) ไปยัง (x,z) ให้ check.mjs ลากจอยเสมือนไปทิศนั้น
 DBG.dirToward = (x, z) => { const P = PLAYER.camBody(), [ix, iy] = BODIES.fromWorld(x - P.x, z - P.z, PLAYER.activeKind()), n = Math.hypot(ix, iy) || 1; return [+(ix / n).toFixed(3), +(iy / n).toFixed(3)]; };
 DBG.pick = (x, y, type) => { MIND.pick(x, y, type || 'touch'); return MIND.picked ? MIND.picked.id : null; };
+DBG.camYaw = () => CAM.yawIdx();   // ดัชนีมุมกล้อง 0..3 (เป้าหมาย) · 0 = กล้องอยู่ทาง +x,+z เหมือนเดิม
+DBG.setCamYaw = (i, instant = true) => { CAM.setYaw(i, instant); return CAM.yawIdx(); };
+DBG.pan = (dx, dz) => { CAM.panWorld(dx, dz, false); CAM.pxT = CAM.px; CAM.pzT = CAM.pz; return { px: +CAM.px.toFixed(2), pz: +CAM.pz.toFixed(2) }; };   // เลื่อนกล้องออกจากตัว (หน่วยโลก) ตรงๆ ไม่ผ่านเมาส์
+DBG.camState = () => ({ yaw: +CAM.yaw.toFixed(3), yawT: +CAM.yawT.toFixed(3), idx: CAM.yawIdx(), px: +CAM.px.toFixed(2), pz: +CAM.pz.toFixed(2), pxT: +CAM.pxT.toFixed(2), dragging: CAM.dragging, right: CAM.right.map((v) => +v.toFixed(3)), fwd: CAM.fwd.map((v) => +v.toFixed(3)), user: +CAM.user.toFixed(1), min: CAM.minSpan, max: CAM.maxSpan });
 DBG.cam = () => ({ zlam: +CAM.zlam.toFixed(2), span: +CAM.span.toFixed(2), user: +CAM.user.toFixed(2), auto: +CAM.auto.toFixed(3), inK: +CAM.inK.toFixed(3), min: CAM.minSpan, max: CAM.maxSpan });
 DBG.ui = () => ({ touch: UI.touch, stick: { ...INPUT.stick }, btn: { ...INPUT.btn }, shown: { release: !UI.els.brel.classList.contains('off'), mind: !UI.els.bpos.classList.contains('off'), use: !UI.els.buse.classList.contains('off'), form: !UI.els.bform.classList.contains('off') } });
 DBG.slots = () => TOWN.slots.map((s) => ({ id: s.id, kind: s.kind, x: +s.x.toFixed(2), y: +s.y.toFixed(2), z: +s.z.toFixed(2) }));
