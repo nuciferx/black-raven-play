@@ -229,6 +229,7 @@ const R = {
   tilt: HASH.tilt ? 1 : 0, grain: 0.03, levels: 44,
   post: null, fsScene: null, fsCam: null,
   _slow: 0,
+  camAlt: null, fogAlt: null,   // กล้องสำรอง (ฉากเปิดเกมมุมสายตานก) + [near, far] ของหมอก · null = ใช้ R.cam มุมสูงปกติ
 };
 
 const POST_VERT = 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }';
@@ -341,14 +342,16 @@ R.render = () => {
   const r = R.renderer, u = R.post.uniforms, c = LOOK.cur;
   r.info.reset();
   r.setRenderTarget(R.rt);
-  r.render(R.scene, R.cam);
+  if (R.camAlt) { const f = R.scene.fog; if (R.fogAlt) { f.near = R.fogAlt[0]; f.far = R.fogAlt[1]; } }   // กล้องสำรอง (perspective ของฉากเปิดเกม): หมอกคิดจากความลึกจริง
+  r.render(R.scene, R.camAlt || R.cam);
   u.tScene.value = R.rt.texture;
   u.uSkyTop.value.copy(c.sky); u.uSkyLow.value.copy(c.skyLow);
   u.uShadow.value.copy(c.shadow).multiplyScalar(0.5);
   u.uExposure.value = c.exposure; u.uSat.value = c.sat; u.uVig.value = c.vignette;
-  u.uBody.value.set(DN.body.x, DN.body.y, 0.034); u.uBodyC.value.set(DN.body.col[0] * DN.body.a, DN.body.col[1] * DN.body.a, DN.body.col[2] * DN.body.a);
+  u.uBody.value.set(DN.body.x, DN.body.y, 0.034); const bk = R.camAlt ? 0 : DN.body.a;   // กล้องสำรอง: ไม่วาดดวงอาทิตย์/จันทร์ (ตำแหน่งบนจอคิดจากกล้องมุมสูง)
+  u.uBodyC.value.set(DN.body.col[0] * bk, DN.body.col[1] * bk, DN.body.col[2] * bk);
   u.uStars.value = DN.stars; u.uAsp.value = R.rtW / R.rtH;
-  u.uTilt.value = R.tilt; u.uSeed.value = (performance.now() * 0.06) % 997;
+  u.uTilt.value = R.camAlt ? 0 : R.tilt; u.uSeed.value = (performance.now() * 0.06) % 997;
   r.setRenderTarget(null);
   r.render(R.fsScene, R.fsCam);
 };
@@ -513,9 +516,11 @@ const BIOMES = {
       { kind: 'rock', anchor: 'any',  dist: [0.2, 0.6], tint: { rock: '#dcb27c' } },
     ],
     props: [
-      { kind: 'cactus',  count: 30, margin: 4,   gap: 3.4, scale: [0.8, 1.35], cluster: 0.38, tint: ['#ffffff', '#e3f2c8'] },
+      { kind: 'datePalm', count: 14, margin: 4,  gap: 4.2, scale: [0.85, 1.3], cluster: 0.38, tint: ['#ffffff', '#e8f2d0'] },   // ปาล์มอินทผลัม (แทนกระบองเพชรเดิม)
       { kind: 'rock',    count: 24, margin: 2,   gap: 1.9, scale: [0.6, 1.8],  tint: ['#f0c488', '#dca96c', '#e8b878'] },
       { kind: 'dryBush', count: 80, margin: 1.6, gap: 1.4, scale: [0.8, 1.4],  tint: ['#ffffff', '#f2dcb0'] },
+      { kind: 'acacia',  count: 10, margin: 4,   gap: 5.5, scale: [0.9, 1.35], cluster: 0.3, tint: ['#ffffff', '#f0e8c8'] },   // อะคาเซียทรงร่ม
+      { kind: 'tamarisk', count: 30, margin: 2,  gap: 2.0, scale: [0.8, 1.4],  tint: ['#ffffff', '#f2f0e0'] },   // พุ่มทามาริสก์
     ],
   },
 };
@@ -753,7 +758,7 @@ TERRAIN.build = (isl) => {
 const PROPS = { kinds: {}, meshes: [], count: 0 };
 const _pc = (h) => GFX.rgb(h);
 // รัศมีชน (ที่สเกล 1) ของของประดับที่ร่างเดินทะลุไม่ได้ · ชนิดที่ไม่อยู่ในตารางนี้ (หญ้า ดอกไม้ พุ่มเตี้ย) เดินผ่านได้ · บ้านย้ายไป 35-house.js / 37-town.js แล้ว
-PROPS.collide = { oak: 0.55, pine: 0.5, pineSnow: 0.5, rock: 0.95, iceRock: 0.85, cactus: 0.5 };
+PROPS.collide = { oak: 0.55, pine: 0.5, pineSnow: 0.5, rock: 0.95, iceRock: 0.85, datePalm: 0.45, acacia: 0.5 };
 
 PROPS.kinds.oak = () => {
   const g = new GB(), r = U.rng(11);
@@ -822,14 +827,37 @@ PROPS.kinds.snowTuft = () => {
   g.ball([0.6, 0.1, 0.3], 0.5, 0, _pc('#e3edf7'), { jit: 0.2, sy: 0.5, cv: 0.06, seed: 10 });
   return g.build();
 };
-PROPS.kinds.cactus = () => {
-  const g = new GB(), c = _pc('#4f8f3e'), cl = _pc('#62a64d');
-  g.limb([0, -0.3, 0], [0, 3.2, 0], 0.4, 0.34, 6, c, cl);
-  g.ball([0, 3.2, 0], 0.36, 0, cl, { jit: 0.05, cv: 0.05, seed: 12 });
-  g.limb([0.2, 1.3, 0], [1.1, 1.5, 0], 0.26, 0.24, 5, c);
-  g.limb([1.1, 1.4, 0], [1.1, 2.6, 0], 0.26, 0.22, 5, c, cl);
-  g.limb([-0.2, 1.9, 0], [-0.9, 2.05, 0.1], 0.22, 0.2, 5, c);
-  g.limb([-0.9, 1.95, 0.1], [-0.9, 2.8, 0.1], 0.22, 0.19, 5, c, cl);
+// พืชทะเลทรายยุคกลางโลกเก่า (แอฟริกาเหนือ/ตะวันออกกลาง): ปาล์มอินทผลัม · อะคาเซียทรงร่ม · พุ่มทามาริสก์ (ไม่มีกระบองเพชร/อะกาเว่ — เป็นพืชอเมริกา)
+PROPS.kinds.datePalm = () => {
+  const g = new GB(), r = U.rng(51), tr = _pc('#7a5a38'), trl = _pc('#8a6a44'), top = [0.5, 5.2, 0.18];
+  g.limb([0, -0.3, 0], [0.1, 1.8, 0.02], 0.34, 0.27, 6, tr, trl);   // ลำต้นโค้งเล็กน้อย 3 ท่อน
+  g.limb([0.1, 1.8, 0.02], [0.32, 3.6, 0.1], 0.27, 0.22, 6, trl, tr);
+  g.limb([0.32, 3.6, 0.1], top, 0.22, 0.2, 6, tr, trl);
+  for (let k = 0; k < 9; k++) {   // ทางใบ: ชี้ออกแล้วโค้งห้อย (2 ท่อน)
+    const a = k / 9 * Math.PI * 2 + r() * 0.3, hx = Math.cos(a), hz = Math.sin(a), up = 0.7 + r() * 0.5, L = 1.7 + r() * 0.5, c = _pc(k % 2 ? '#5a8f3a' : '#6aa244');
+    const m = [top[0] + hx * L * 0.55, top[1] + up, top[2] + hz * L * 0.55], e = [top[0] + hx * L * 1.25, top[1] + up - 0.95, top[2] + hz * L * 1.25];
+    g.limb(top, m, 0.2, 0.17, 4, c); g.limb(m, e, 0.17, 0.0, 4, c);
+  }
+  for (let k = 0; k < 3; k++) g.ball([top[0] + Math.cos(k * 2.1) * 0.32, top[1] - 0.3, top[2] + Math.sin(k * 2.1) * 0.32], 0.22, 0, _pc('#a8642a'), { jit: 0.1, cv: 0.1, seed: 60 + k });   // พวงอินทผลัม
+  return g.build();
+};
+PROPS.kinds.acacia = () => {
+  const g = new GB(), tr = _pc('#6e5236'), trl = _pc('#80603f');
+  g.limb([0, -0.3, 0], [0.15, 2.3, 0.1], 0.3, 0.22, 6, tr, trl);   // ลำต้นแตกกิ่งเป็นง่าม แล้วทรงพุ่มแบนเหมือนร่ม
+  g.limb([0.15, 2.2, 0.1], [-1.4, 3.5, 0.5], 0.2, 0.12, 5, trl);
+  g.limb([0.15, 2.2, 0.1], [1.5, 3.3, -0.5], 0.2, 0.12, 5, trl);
+  g.ball([0.0, 3.9, 0.0], 2.3, 0, _pc('#8ba043'), { jit: 0.14, sy: 0.3, cv: 0.14, seed: 71 });
+  g.ball([-1.7, 3.55, 0.6], 1.5, 0, _pc('#7b9238'), { jit: 0.14, sy: 0.32, cv: 0.14, seed: 72 });
+  g.ball([1.8, 3.45, -0.6], 1.55, 0, _pc('#98ab4c'), { jit: 0.14, sy: 0.32, cv: 0.14, seed: 73 });
+  return g.build();
+};
+PROPS.kinds.tamarisk = () => {
+  const g = new GB(), r = U.rng(81);
+  for (let i = 0; i < 7; i++) {
+    const a = i / 7 * Math.PI * 2 + r() * 0.5, d = 0.4 + r() * 0.5, h = 0.9 + r() * 0.8, bx = Math.cos(a) * d * 0.4, bz = Math.sin(a) * d * 0.4;
+    g.limb([bx, -0.1, bz], [Math.cos(a) * d, h, Math.sin(a) * d], 0.07, 0.03, 3, _pc('#7a6040'));
+    g.ball([Math.cos(a) * d * 1.1, h + 0.1, Math.sin(a) * d * 1.1], 0.5 + r() * 0.2, 0, _pc(i % 3 === 0 ? '#9db596' : '#86a283'), { jit: 0.2, sy: 0.7, cv: 0.12, seed: 90 + i });   // พู่ใบเขียวเทาฟู
+  }
   return g.build();
 };
 PROPS.kinds.dryBush = () => {
@@ -5389,7 +5417,7 @@ WIZ.init = () => {
   WIZ.el.skip.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); WIZ.toEnd(); });
   WIZ.el.btn.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); WIZ.restart(); });
   window.addEventListener('keydown', (e) => {
-    if (!WIZ.lock) return;
+    if (!WIZ.lock || INTRO.on) return;   // ฉากเปิดเกมใช้ WIZ.lock ล็อกการควบคุมด้วย — ปุ่มของฉากนั้นอยู่ 70-intro.js (เดิม Esc ตอนข้ามฉากเปิดเกมไปเรียกจบชิ้นทดลอง + เซฟ ended)
     if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); if (WIZ.phase === 'end') { if (WIZ.endAt > 1.2) WIZ.restart(); } else WIZ.advance(); }
     else if (e.code === 'Escape' && WIZ.phase !== 'end') WIZ.toEnd();
   });
@@ -5757,19 +5785,37 @@ TUT.update = (dt) => {
 };
 
 /* ---- 70-intro.js ---- */
-// 70-intro.js — INTRO: ฉากเปิดเกม (cutscene ~17 วิ) เล่นเฉพาะเริ่มเกมใหม่ (เซฟว่าง) ก่อนบทพูดกับแม่ · เซฟ SAVE.introSeen เมื่อจบ/ข้าม
-// เรื่องย่อ: เหนือทะเลเมฆรุ่งเช้า (เห็นเกาะลอยทั้งสาม + ชื่อเกม) → กล้องดิ่งลงทะลุเมฆตามเรเวนที่ร่อนวนลง → ลงจอดหน้าบ้านฟินน์ → แปลงร่างเป็นฟินน์ มองรอบตัว → เดินเข้าบ้าน → ส่งต่อบทพูดแม่
-// ทุกอย่างเป็นฟังก์ชันของเวลา INTRO.t (วินาทีตามเวลาเกม ไม่ใช่นาฬิกาจริง): INTRO.pose(t) = ตำแหน่ง/ท่าตัวเรา · INTRO.cam(t) = กล้อง (ใช้เฉพาะก่อนลงจอด) · ค่าปรับทั้งหมดอยู่ INTRO.cfg
+// 70-intro.js — INTRO: ฉากเปิดเกม (cutscene ~21 วิ) เล่นเฉพาะเริ่มเกมใหม่ (เซฟว่าง) ก่อนบทพูดกับแม่ · เซฟ SAVE.introSeen เมื่อจบ/ข้าม
+// ลำดับ: (1) ชื่อเกม "Black Raven" บนท้องฟ้ามืดรุ่งเช้า ยังไม่เห็นโลก → (2) มุมมองสายตานก (กล้อง perspective ที่ตาเรเวน บินทะลุเมฆพุ่งเข้าหาเกาะเมือง · ซ่อนเกาะอื่น — โค้ดอยู่ 70-introbird.js)
+//   → (3) จอมืดวูบสั้นๆ แล้วตัดเข้าฉากเดิม: เรเวนร่อนลงหน้าบ้านฟินน์ (กล้องมุมสูงปกติ) → แปลงร่างเป็นฟินน์ มองรอบตัว → เดินเข้าบ้าน → ส่งต่อบทพูดแม่
+// เวลา: INTRO.t = นาฬิกาฉากทั้งหมด (วินาทีตามเวลาเกม ไม่ใช่นาฬิกาจริง) · ฉากร่อนลง/แปลงร่าง/เดินเข้าบ้านใช้ "เวลาเดิม" ot = t - tCut + u0 (ฟังก์ชัน pose/cam เดิมไม่ต้องแก้) · ค่าปรับทั้งหมดอยู่ INTRO.cfg
 // ล็อกการควบคุมด้วย WIZ.lock (ระบบอื่นเช็กตัวนี้อยู่แล้ว: ปุ่ม/INTERACT/MIND/SENSE/GOALS/TUT/กล้องหมุน) + INTRO.on (WIZ.update ไม่ทำงานของฉากพ่อมด · PLAYER.save ไม่เซฟ)
-// หลังลงจอด (t >= tLand) กล้องกลับไปใช้ CAM.follow ปกติ ตามตัวฟินน์เข้าบ้าน (หลังคา/ผนังจางเองตามระบบบ้าน)
-// เมฆ = InstancedMesh ชิ้นเดียว (1 draw call) แผ่นแบนโปร่งแสง 3 ชั้น · ซ่อนเมื่อกล้องต่ำกว่าชั้นเมฆ
+// หลังลงจอด (ot >= tLand) กล้องกลับไปใช้ CAM.follow ปกติ ตามตัวฟินน์เข้าบ้าน (หลังคา/ผนังจางเองตามระบบบ้าน)
+// ข้ามฉาก: แตะ/คลิกที่ไหนครั้งแรก = ปุ่ม "ข้าม ▸▸" เด่นขึ้นเท่านั้น (กันกดพลาด) · ต้องกดที่ตัวปุ่ม (หรือ Esc / Space) จึงข้ามจริง
 const INTRO = {
-  on: false, t: 0, camOwn: false, phase: '', geo: null, clouds: null, el: null, skipped: false, form0: 1, cloudA: 0, sc0: 1, title: 0, white: 0, dark: 0,
+  on: false, t: 0, camOwn: false, phase: '', geo: null, clouds: null, el: null, skipped: false, form0: 1, cloudA: 0, sc0: 1, title: 0, white: 0, dark: 0, bird: false, armed: false, card: 0, ot: 0,
   cfg: {
-    cloudY: 36,                 // ความสูงชั้นเมฆ (กลางชั้น)
-    hiY: 72,                    // ความสูงเรเวนตอนเริ่ม
+    // ---- ลำดับฉาก (นาฬิกาฉาก t) ----
+    titleKeys: [[0.5, 0], [1.6, 1], [3.1, 1], [3.9, 0]],   // ชื่อเกม: ขึ้น → ค้าง → จาง
+    cardKeys: [[0, 0.995], [3.4, 0.995], [4.4, 0]],              // การ์ดท้องฟ้ามืดรุ่งเช้าที่ปิดโลกไว้ตอนโชว์ชื่อ (1 = ปิดมิด)
+    tBird: 3.3,                 // เริ่มมุมมองสายตานก
+    tCut: 10.7,                 // ตัดเข้าฉากร่อนลง (จอมืดเต็มพอดีจุดนี้)
+    cutDark: [[10.0, 0], [10.55, 0.995], [10.85, 0.995], [11.5, 0]],   // จอมืดวูบตอนตัดฉาก
+    u0: 7.0,                    // "เวลาเดิม" ของฉากร่อนลงที่เริ่มหลังตัด (เรเวนเหลือร่อนวนลงอีก ~3 วิ)
+    // ---- มุมมองสายตานก (70-introbird.js) ----
+    bird: {
+      D0: 430, D1: 46,          // ระยะราบจากหน้าบ้านฟินน์ตอนเริ่ม/ตอนจบ
+      y0: 80, yEnd: 19,         // ความสูงกล้องตอนเริ่ม (เหนือเมฆ) / ตอนจบ (เหนือพื้นที่หน้าบ้าน)
+      fov: 70, headOff: 0.5,    // มุมมองแนวตั้ง (องศา) · หันเบี่ยงจากทิศ "ตรงไปหาเกาะอื่น" (เรเดียน) ให้บินเฉียงเข้าเมือง
+      pitchAdd: -0.1,           // ก้มเพิ่มจากแนวทางบิน (เรเดียน)
+      flap: 1.05, bob: 0.9,     // จังหวะกระพือ (รอบ/วินาที) · ระยะโยกขึ้นลง (หน่วยโลก)
+      clouds: 340, slab: [27, 52],   // จำนวนปุยเมฆ · ชั้นเมฆ [ล่าง, บน]
+    },
+    // ---- ฉากร่อนลงหน้าบ้าน (เวลาเดิม) ----
+    cloudY: 36,                 // (เดิม) ความสูงชั้นเมฆกลางชั้น — ยังใช้เป็นเกณฑ์ซ่อนเมฆไม่ได้แล้ว ใช้อ้างความสูงเรเวน
+    hiY: 72,                    // ความสูงเรเวนตอนเริ่ม (เวลาเดิม 0)
     R0: 34, turns: 1.15,        // รัศมี/จำนวนรอบที่ร่อนวนก่อนลงจอด
-    farSpan: [270, 400],        // ซูมไกลสุด [จอแนวนอน, จอแนวตั้ง] (ให้เห็นเกาะทั้งสาม)
+    farSpan: [270, 400],        // ซูมไกลสุด [จอแนวนอน, จอแนวตั้ง] (ใช้คำนวณช่วงซูมตอนเริ่มฉากร่อนลง · เกาะอื่นถูกซ่อนด้วยระนาบตัด)
     farTy: 50,                  // ความสูงจุดมองตอนไกลสุด
     tDesc: 1.6,                 // เรเวนเริ่มลดระดับ
     tLand: 10.0,                // ลงจอด (กล้องส่งต่อให้ CAM.follow ปกติ)
@@ -5777,8 +5823,7 @@ const INTRO = {
     look: [[11.0, 0], [11.5, 1.0], [11.9, 1.0], [12.7, -1.0], [13.1, -1.0], [13.7, 0]],   // [เวลา, มุมหันเทียบทิศหน้าประตู (เรเดียน)] ฟินน์มองซ้าย-ขวาเหมือนกลัวคนเห็น
     tWalk: 13.8, speed: 3.1,    // เริ่มเดินเข้าบ้าน · ความเร็ว (หน่วย/วินาที)
     tEnd: 17.3,                 // จบฉาก (ถึงที่ยืนข้างแม่แล้ว)
-    titleKeys: [[0.6, 0], [2.0, 1], [3.8, 1], [5.0, 0]],   // ชื่อเกม: ขึ้น → ค้าง → จาง
-    ravenBoost: 6.5,            // ขยายตัวเรเวนตอนไกล (ให้เห็นเป็นจุดดำบนเมฆ) ลดเหลือ 1 ภายใน ~7 วิ
+    ravenBoost: 6.5,            // ขยายตัวเรเวนตอนไกล · ลดเหลือ 1 ภายใน ~7 วิ (เวลาเดิม) — หลังตัดฉากเป็น 1 อยู่แล้ว
   },
 };
 const _inA = (a) => { while (a > Math.PI) a -= 2 * Math.PI; while (a < -Math.PI) a += 2 * Math.PI; return a; };
@@ -5794,21 +5839,30 @@ body.intro #ui{visibility:hidden}
 #in.on{display:block}
 #in-w,#in-d{position:absolute;left:0;top:0;right:0;bottom:0;opacity:0;pointer-events:none}
 #in-w{background:#f6f1ea}#in-d{background:#0a0710}
+#in-s{position:absolute;left:0;top:0;right:0;bottom:0;opacity:1;pointer-events:none;background:linear-gradient(180deg,#07061a 0%,#171236 38%,#3a2850 66%,#8a4f58 88%,#d98a62 100%)}
 #in-t{position:absolute;left:0;right:0;top:36%;text-align:center;color:#fff7ea;opacity:0;pointer-events:none;font:600 clamp(34px,9vw,96px)/1.1 "Palatino Linotype","Book Antiqua",Palatino,Georgia,"Times New Roman",serif;letter-spacing:.3em;text-indent:.3em;text-transform:uppercase;text-shadow:0 0 28px rgba(255,190,140,.6),0 0 6px rgba(255,220,180,.5),0 3px 0 rgba(40,18,36,.45)}
 #in-t i{display:block;width:min(46vw,420px);height:2px;margin:.35em auto 0;background:linear-gradient(90deg,rgba(255,230,190,0),rgba(255,230,190,.95),rgba(255,230,190,0))}
-#in-k{position:absolute;left:calc(14px + env(safe-area-inset-left,0px));top:calc(14px + env(safe-area-inset-top,0px));padding:8px 14px;border-radius:10px;background:rgba(18,10,34,.7);border:2px solid rgba(255,255,255,.55);color:#fff;font-size:14px;font-weight:700}
+#in-k{position:absolute;left:calc(14px + env(safe-area-inset-left,0px));top:calc(14px + env(safe-area-inset-top,0px));min-height:44px;box-sizing:border-box;padding:10px 16px;border-radius:12px;background:rgba(18,10,34,.55);border:2px solid rgba(255,255,255,.35);color:rgba(255,255,255,.75);font-size:14px;font-weight:700;cursor:pointer;touch-action:manipulation;transition:background .2s,border-color .2s,color .2s,transform .2s}
+#in-k small{display:none;font-size:11px;font-weight:600;margin-top:2px;opacity:.9}
+#in-k.hot{background:rgba(120,50,30,.9);border-color:#ffd9a0;color:#fff;transform:scale(1.12);transform-origin:left top;box-shadow:0 0 0 0 rgba(255,217,160,.7);animation:inpulse 1.1s infinite}
+#in-k.hot small{display:block}
+@keyframes inpulse{0%{box-shadow:0 0 0 0 rgba(255,217,160,.65)}100%{box-shadow:0 0 0 16px rgba(255,217,160,0)}}
 `;
 
+INTRO.arm = () => { INTRO.armed = true; INTRO.el.k.classList.add('hot'); };
 INTRO.init = () => {
   const st = document.createElement('style'); st.textContent = INTRO.CSS; document.head.appendChild(st);
   const z = document.createElement('div'); z.id = 'in';
-  z.innerHTML = '<div id="in-w"></div><div id="in-d"></div><div id="in-t">Black Raven<i></i></div><div id="in-k">ข้าม ▸▸</div>';
+  z.innerHTML = '<div id="in-s"></div><div id="in-w"></div><div id="in-d"></div><div id="in-t">Black Raven<i></i></div><div id="in-k"><b>ข้าม ▸▸</b><small>แตะปุ่มนี้อีกครั้งเพื่อข้าม</small></div>';
   document.body.appendChild(z);
-  INTRO.el = { root: z, w: z.querySelector('#in-w'), d: z.querySelector('#in-d'), t: z.querySelector('#in-t'), k: z.querySelector('#in-k') };
-  z.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); INTRO.skip(); });
+  INTRO.el = { root: z, s: z.querySelector('#in-s'), w: z.querySelector('#in-w'), d: z.querySelector('#in-d'), t: z.querySelector('#in-t'), k: z.querySelector('#in-k') };
+  z.addEventListener('pointerdown', (e) => {   // แตะที่ไหนครั้งแรก = ปุ่มข้ามเด่นขึ้น · ข้ามจริงเมื่อกดที่ตัวปุ่มเท่านั้น (กันกดพลาด)
+    e.preventDefault(); e.stopPropagation();
+    if (e.target && e.target.closest && e.target.closest('#in-k') && INTRO.armed) INTRO.skip(); else INTRO.arm();
+  });
   window.addEventListener('keydown', (e) => {
     if (!INTRO.on) return;
-    if (e.code === 'Space' || e.code === 'Escape' || e.code === 'Enter') { e.preventDefault(); INTRO.skip(); }
+    if (e.code === 'Space' || e.code === 'Escape') { e.preventDefault(); INTRO.skip(); }
   });
   if (HASH.intro === 0 || HASH.islandSet || HASH.debugcam) return;
   const sv = SAVE.read(), fresh = !sv.player && !sv.story && !sv.introSeen && !sv.ended && !PLAYER.loaded;   // เซฟเก่า (มีตำแหน่ง/เรื่อง/จบแล้ว) = ถือว่าดูแล้ว ไม่เล่น
@@ -5870,38 +5924,11 @@ INTRO.cam = (t) => {
   return { x: U.lerp(G.far[0], tx, w1), z: U.lerp(G.far[1], tz, w1), ty: U.lerp(C.farTy, p.y - 1.5, w2), span: ln };
 };
 
-// ---- เมฆ ----
-INTRO.buildClouds = () => {
-  const C = INTRO.cfg, cv = document.createElement('canvas'); cv.width = cv.height = 128;
-  const cx = cv.getContext('2d'), rg = U.rng(77);
-  const puff = (x, y, r, a) => { const g = cx.createRadialGradient(x, y, 0, x, y, r); g.addColorStop(0, 'rgba(255,255,255,' + a + ')'); g.addColorStop(0.6, 'rgba(255,255,255,' + (a * 0.7).toFixed(2) + ')'); g.addColorStop(1, 'rgba(255,255,255,0)'); cx.fillStyle = g; cx.fillRect(0, 0, 128, 128); };
-  for (let i = 0; i < 6; i++) puff(64 + (rg() - 0.5) * 36, 64 + (rg() - 0.5) * 26, 24 + rg() * 14, 0.8);   // แกนกลางนุ่ม
-  for (let i = 0; i < 16; i++) { const a = i / 16 * 6.283 + rg() * 0.3, d = 24 + rg() * 12; puff(64 + Math.cos(a) * d, 64 + Math.sin(a) * d * 0.72, 11 + rg() * 9, 0.95); }   // ก้อนนูนรอบขอบ (ขอบเป็นลอน ไม่เป็นวงรีเรียบ)
-  const tex = new THREE.CanvasTexture(cv), geo = new THREE.PlaneGeometry(1, 1); geo.rotateX(-Math.PI / 2);
-  const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, fog: false, opacity: 0 });
-  const layers = [{ y: C.cloudY - 3, n: 60, s: [70, 130], col: '#aebbd8' }, { y: C.cloudY, n: 62, s: [55, 110], col: '#ffffff' }, { y: C.cloudY + 3, n: 40, s: [34, 70], col: '#fff0e2' }];
-  const N = layers.reduce((a, l) => a + l.n, 0), im = new THREE.InstancedMesh(geo, mat, N), m = new THREE.Matrix4(), q = new THREE.Quaternion(), v = new THREE.Vector3(), sc = new THREE.Vector3(), col = new THREE.Color(), up = new THREE.Vector3(0, 1, 0);
-  let k = 0; const rng = U.rng(2026);
-  for (const L of layers) {
-    for (let i = 0, tries = 0; i < L.n && tries < 4000; tries++) {
-      const x = -430 + rng() * 860, z = -430 + rng() * 800, hx = x - (L.y), hz = z - (L.y);   // จุดพื้นที่แผ่นนี้บังจากกล้อง (กล้อง yaw 0: เลื่อน -H ทั้ง x และ z)
-      let ok = true; for (const s of WORLD.islands) if (Math.hypot(hx - s.x, hz - s.z) < s.radius * 0.8) { ok = false; break; }
-      if (!ok) continue;
-      const w = L.s[0] + rng() * (L.s[1] - L.s[0]);
-      q.setFromAxisAngle(up, rng() * 6.283); v.set(x, L.y + (rng() - 0.5) * 1.5, z); sc.set(w, 1, w * (0.45 + rng() * 0.45));
-      m.compose(v, q, sc); im.setMatrixAt(k, m); col.set(L.col).multiplyScalar(0.94 + rng() * 0.06); im.setColorAt(k, col); k++; i++;
-    }
-  }
-  im.count = k; im.instanceMatrix.needsUpdate = true; if (im.instanceColor) im.instanceColor.needsUpdate = true;
-  im.frustumCulled = false; im.castShadow = false; im.receiveShadow = false; im.renderOrder = 3; im.visible = false;
-  R.scene.add(im); INTRO.clouds = im;
-};
-
 INTRO.begin = () => {
   if (INTRO.on) return;
-  INTRO.buildGeo(); INTRO.buildClouds();
+  INTRO.buildGeo(); INTRO.buildBird();
   const P = PLAYER, d = INTRO.geo.door; if (!d.open) HOUSE.toggle(HUT.h, d, true);
-  INTRO.on = true; INTRO.t = 0; INTRO.camOwn = true; INTRO.skipped = false; WIZ.lock = true; WIZ.phase = null;
+  INTRO.on = true; INTRO.t = 0; INTRO.camOwn = true; INTRO.skipped = false; INTRO.armed = false; INTRO.el.k.classList.remove('hot'); INTRO.bird = true; WIZ.lock = true; WIZ.phase = null;
   INTRO.sc0 = RIG.raven.root.scale.x;
   P.setForm('raven', true); P.rs = null; P.fade = 0; P.isl = WORLD.byId.home; P.ctl = null;
   document.body.classList.add('intro'); INTRO.el.root.classList.add('on');
@@ -5915,8 +5942,10 @@ INTRO.update = (dt) => {
   const C = INTRO.cfg, P = PLAYER, G = INTRO.geo;
   for (const k of ['mind', 'release', 'form', 'use', 'bag']) INPUT.pressed[k] = false;
   if (INTRO.hold && dt > 0 && !INTRO._seek) dt = 0;   // (ตรวจ) แช่เวลาฉากไว้ถ่ายภาพ
-  INTRO.t += dt; const t = INTRO.t;
+  INTRO.t += dt; const T = INTRO.t, bird = T < C.tCut, t = bird ? C.u0 : T - C.tCut + C.u0;   // T = นาฬิกาฉาก · t = เวลาเดิมของฉากร่อนลง (ตอนมุมนกค้างที่ u0 ให้ตัว/กล้องปกติรออยู่ใต้ฉาก)
+  INTRO.ot = t;
   if (t >= C.tEnd) { INTRO.finish(false); return; }
+  if (INTRO.bird && !bird) INTRO.birdEnd();   // ตัดฉาก: คืนกล้องมุมสูงปกติ (ตอนจอมืดเต็ม)
   // แปลงร่าง (ใช้เอฟเฟกต์เดิมของ FORM) · ถ้ากระโดดเวลาข้ามไปไกล ให้สลับร่างทันที
   if (t >= C.tForm && P.form === 'raven' && !FORM.fx) {
     if (t > C.tForm + FORM.dur) { P.setForm('human', true); INTRO.setRavenScale(1); }
@@ -5935,7 +5964,7 @@ INTRO.update = (dt) => {
     P.state = o.fly ? 'fly' : 'ground'; INPUT.x = 0; INPUT.y = o.fly ? 0.6 : 0; INPUT.up = o.fly && t > C.tLand - 1.1; INPUT.down = false; P.energy = P.kind.energyMax;
     INTRO.setRavenScale(1 + C.ravenBoost * (1 - U.smooth(U.clamp((t - 1.5) / 5.5, 0, 1))) * (t < C.tLand ? 1 : 0));
   } else { P.state = 'ground'; INPUT.x = INPUT.y = 0; INPUT.up = INPUT.down = false; }
-  // กล้อง
+  // กล้องมุมสูงปกติ (ระหว่างมุมนกยังตั้งค่าไว้ที่จุดเริ่มฉากร่อนลง ให้โลก/อากาศ/แสงอยู่รอบบ้านฟินน์)
   if (t < C.tLand) {
     const c = INTRO.cam(t);
     CAM.tx = LOOK.focus.x = c.x; CAM.tz = LOOK.focus.z = c.z; CAM.ty = LOOK.focusY = LOOK.yFollow = c.ty; CAM.span = CAM.spanT = c.span;
@@ -5943,15 +5972,17 @@ INTRO.update = (dt) => {
     INTRO.camOwn = false; const sp = CAM.span;
     CAM.setKind(P.kind, false); CAM.setZoom(22, false); CAM.follow(0, true); CAM.span = sp; CAM.zlam = 3;
   }
-  // เมฆ + จอขาว/ดำ + ชื่อเกม
-  const ty = t < C.tLand ? CAM.ty : -99, ca = U.smooth(U.clamp((ty - (C.cloudY - 8)) / 16, 0, 1));
-  INTRO.cloudA = ca; INTRO.clouds.visible = ca > 0.01; INTRO.clouds.material.opacity = ca * 0.96; INTRO.clouds.position.x = t * 1.4;
-  INTRO.white = t < C.tLand ? 0.88 * Math.pow(4 * ca * (1 - ca), 1.3) : 0;
-  INTRO.dark = INTRO.tdoor ? 0.7 * Math.exp(-Math.pow((t - (INTRO.tdoor + 0.12)) / 0.3, 2)) : 0;
-  INTRO.title = _inKeys(C.titleKeys, t);
-  const E = INTRO.el; E.w.style.opacity = INTRO.white.toFixed(3); E.d.style.opacity = INTRO.dark.toFixed(3);
-  E.t.style.opacity = INTRO.title.toFixed(3); E.t.style.transform = 'scale(' + (1 + 0.03 * Math.min(1, t / 5)).toFixed(4) + ')';
-  INTRO.phase = t < 4.6 ? 'above' : t < 7.6 ? 'through' : t < C.tLand ? 'glide' : t < C.tWalk ? 'land' : 'enter';
+  if (bird && T >= C.tBird) INTRO.birdUpdate(T);
+  else if (bird) INTRO.birdUpdate(C.tBird);
+  // ชื่อเกม + การ์ดท้องฟ้า + จอมืด (ตัดฉาก / ประตูบ้าน)
+  INTRO.cloudA = INTRO.clouds ? INTRO.clouds.material.uniforms.uAlpha.value : 0; INTRO.white = 0;
+  const door = INTRO.tdoor ? 0.7 * Math.exp(-Math.pow((t - (INTRO.tdoor + 0.12)) / 0.3, 2)) : 0;
+  if (INTRO.clipOn && t > (INTRO.tdoor || 1e9) + 0.1) INTRO.clip(false);   // เข้าบ้านแล้ว: เลิกตัดเกาะอื่น (ซ่อนในจอมืดวูบตอนประตู)
+  INTRO.dark = Math.max(door, _inKeys(C.cutDark, T));
+  INTRO.title = _inKeys(C.titleKeys, T); INTRO.card = _inKeys(C.cardKeys, T);
+  const E = INTRO.el; E.s.style.opacity = INTRO.card.toFixed(3); E.w.style.opacity = '0'; E.d.style.opacity = INTRO.dark.toFixed(3);
+  E.t.style.opacity = INTRO.title.toFixed(3); E.t.style.transform = 'scale(' + (1 + 0.03 * Math.min(1, T / 5)).toFixed(4) + ')';
+  INTRO.phase = T < C.tBird ? 'title' : T < C.tCut ? INTRO.birdPhase : t < C.tWalk ? 'land' : 'enter';
 };
 
 INTRO.skip = () => INTRO.finish(true);
@@ -5961,7 +5992,7 @@ INTRO.finish = (skipped) => {
   const P = PLAYER, G = INTRO.geo;
   INTRO.on = false; INTRO.skipped = !!skipped; INTRO.phase = 'done'; WIZ.lock = false; WIZ.phase = null; FORM.fx = null;
   document.body.classList.remove('intro'); INTRO.el.root.classList.remove('on');
-  INTRO.clouds.visible = false; INTRO.setRavenScale(1);
+  INTRO.birdEnd(); INTRO.clip(false); INTRO.setRavenScale(1);
   if (P.form !== 'human') P.setForm('human', true);
   const mo = STORY.mother(), sx = TOWN.start.x, sz = TOWN.start.z;
   P.setPos(sx, G.fy, sz); P.state = 'ground'; P.vx = P.vy = P.vz = 0; P.turnRate = 0; P.sit = false; P.energy = P.kind.energyMax;
@@ -5971,6 +6002,112 @@ INTRO.finish = (skipped) => {
     INTRO.camOwn = false; CAM.px = CAM.pz = CAM.pxT = CAM.pzT = 0; CAM.setKind(P.kind, true); CAM.follow(0, true); CAM.update(0); LOOK.focusY = CAM.ty; LOOK.update(0, true);
   }
   SAVE.write({ introSeen: 1 }); PLAYER.save();
+};
+
+/* ---- 70-introbird.js ---- */
+// 70-introbird.js — ส่วนมุมมองสายตานก (บุคคลที่หนึ่ง) ของฉากเปิดเกม (ต่อจาก 70-intro.js ซึ่งต้องโหลดก่อน — เรียงชื่อไฟล์แล้วอยู่หลังกัน)
+// กล้อง perspective ที่ตาเรเวน: บินจากเหนือเมฆ ทะลุชั้นเมฆ (ปุยเมฆพุ่งผ่านจอ) พุ่งเข้าหาเกาะเมืองสีเขียวจนถึงหน้าบ้านฟินน์ · ปลายปีกดำโผล่ที่ขอบจอล่าง
+// เกาะหิมะ/ทะเลทราย "ห้ามเห็น" (ให้ผู้เล่นค้นพบเอง): ใช้ระนาบตัดของ renderer (R.renderer.clippingPlanes) ตัดทุกอย่างที่อยู่ฝั่งเกาะอื่นทิ้ง
+//   ระนาบวางกึ่งกลางช่องว่างระหว่างขอบเกาะเมืองกับขอบเกาะที่ใกล้สุด (คำนวณจากรูปร่างเกาะจริง) · เลิกใช้ตอนเฟรมที่จอมืดวูบตอนเข้าบ้าน
+// แสดงผลผ่าน R.camAlt (20-post.js เลือกกล้องนี้แทน R.cam เมื่อมีค่า) + R.fogAlt = [near, far] (หมอกของกล้อง perspective คิดจากความลึกจริง)
+// เมฆ = InstancedBufferGeometry ชิ้นเดียว (1 draw call) ปุยบิลบอร์ดหลายก้อนหลายความโปร่ง · ปีก 2 ชิ้น (2 draw call)
+
+// ระนาบตัดเกาะอื่น + ทิศบิน (ฟังก์ชันล้วนของรูปร่างเกาะ)
+INTRO.birdGeo = () => {
+  const B = INTRO.cfg.bird, G = INTRO.geo, H = WORLD.byId.home, others = WORLD.islands.filter((s) => !s.rock && s.id !== 'home');
+  let nx = 0, nz = 0;
+  for (const o of others) { const d = Math.hypot(o.x - H.x, o.z - H.z) || 1; nx += (o.x - H.x) / d; nz += (o.z - H.z) / d; }
+  const nl = Math.hypot(nx, nz) || 1; nx /= nl; nz /= nl;
+  const th = Math.atan2(nz, nx); let homeMax = 0, oMin = 1e9;
+  for (let a = 0; a < 360; a += 3) { const q = a * Math.PI / 180; homeMax = Math.max(homeMax, WORLD.outline(H, q) * Math.cos(q - th)); }
+  for (const o of others) { let mr = 0; for (let a = 0; a < 360; a += 3) mr = Math.max(mr, WORLD.outline(o, a * Math.PI / 180)); oMin = Math.min(oMin, (o.x - H.x) * nx + (o.z - H.z) * nz - mr); }
+  const M = homeMax + 8;   // ระยะตัดจากกลางเกาะเมืองตามทิศ n: ชิดขอบเกาะเมืองเผื่อ 8 (ตัดหินลอยทางไปเกาะอื่นด้วย) · ต้องน้อยกว่า oMin (ขอบเกาะอื่นที่ใกล้สุด) เสมอ
+  const ha = th + B.headOff, hx = Math.cos(ha), hz = Math.sin(ha), gT = WORLD.groundAt(G.L[0], G.L[1]);
+  INTRO.plane = new THREE.Plane(new THREE.Vector3(-nx, 0, -nz), nx * H.x + nz * H.z + M);   // เก็บฝั่งเกาะเมือง (ระยะ >= 0) ตัดฝั่งเกาะอื่น
+  INTRO.bg = { n: [nx, nz], homeMax, oMin, M, h: [hx, hz], T: [G.L[0], G.L[1]], ye: (gT === null ? H.baseH : gT) + B.yEnd };
+};
+
+// สถานะกล้องที่ s = 0..1 ของช่วงสายตานก
+INTRO.birdState = (s, T) => {
+  const B = INTRO.cfg.bird, g = INTRO.bg, ease = (u) => 0.3 * u + 0.7 * u * u;
+  const dist = (u) => B.D0 + (B.D1 - B.D0) * ease(u), alt = (u) => U.lerp(B.y0, g.ye, U.smooth(U.clamp((u - 0.1) / 0.8, 0, 1)));
+  const D = dist(s), u1 = Math.max(0, s - 0.015), u2 = Math.min(1, s + 0.015), run = (dist(u1) - dist(u2)) || 1e-3, rise = alt(u2) - alt(u1);
+  const ph = Math.PI * 2 * B.flap * T, k = 0.35 + 0.65 * s;
+  return { x: g.T[0] - g.h[0] * D, z: g.T[1] - g.h[1] * D, y: alt(s) + Math.sin(ph) * B.bob * k, yaw: Math.atan2(-g.h[0], -g.h[1]),
+    pitch: Math.atan2(rise, run) + B.pitchAdd + Math.sin(ph + 0.6) * 0.03, roll: Math.sin(ph * 0.5 + 1.1) * 0.07, ph };
+};
+
+INTRO.clip = (on) => { R.renderer.clippingPlanes = on ? [INTRO.plane] : []; INTRO.clipOn = !!on; };
+
+INTRO.buildBird = () => {
+  const C = INTRO.cfg, B = C.bird;
+  INTRO.birdGeo();
+  // กล้อง + ปีก
+  const pc = INTRO.pcam = new THREE.PerspectiveCamera(B.fov, R.w / R.h, 0.3, 1800); pc.rotation.order = 'YXZ'; R.scene.add(pc);
+  const sh = new THREE.Shape(), pts = [[0, 0.05], [0.25, 0.2], [0.6, 0.24], [0.95, 0.18], [1.2, 0.06], [1.42, 0.0], [1.14, -0.05], [1.33, -0.22], [1.05, -0.2], [1.16, -0.4], [0.9, -0.34], [0.95, -0.54], [0.7, -0.4], [0.35, -0.34], [0, -0.22]];
+  pts.forEach(([x, y], i) => (i ? sh.lineTo(x, y) : sh.moveTo(x, y))); sh.closePath();
+  const wm = new THREE.MeshBasicMaterial({ color: 0x0b0912, side: THREE.DoubleSide, fog: false }), wings = INTRO.wings = [];
+  for (const sg of [1, -1]) { const m = new THREE.Mesh(new THREE.ShapeGeometry(sh), wm); m.scale.x = sg; m.frustumCulled = false; m.renderOrder = 5; pc.add(m); wings.push(m); }
+  // เมฆ: ปุยบิลบอร์ดในคอร์ริดอร์ตามแนวบิน เรียงไกล→ใกล้ (ไม่เขียนความลึก)
+  const cv = document.createElement('canvas'); cv.width = cv.height = 256;
+  const cx = cv.getContext('2d'), rg = U.rng(4242), cl = (v) => Math.min(116, Math.max(12, v));
+  for (let v = 0; v < 4; v++) {
+    const ox = (v % 2) * 128, oy = Math.floor(v / 2) * 128;
+    const puff = (x, y, r, a) => { const gr = cx.createRadialGradient(ox + x, oy + y, 0, ox + x, oy + y, r); gr.addColorStop(0, 'rgba(255,255,255,' + a + ')'); gr.addColorStop(0.55, 'rgba(255,255,255,' + (a * 0.62).toFixed(2) + ')'); gr.addColorStop(1, 'rgba(255,255,255,0)'); cx.fillStyle = gr; cx.fillRect(ox, oy, 128, 128); };
+    for (let i = 0; i < 5; i++) puff(cl(64 + (rg() - 0.5) * 40), cl(66 + (rg() - 0.5) * 22), 22 + rg() * 12, 0.85);
+    for (let i = 0; i < 12; i++) { const a = i / 12 * 6.283 + rg() * 0.4, d = 20 + rg() * 20; puff(cl(64 + Math.cos(a) * d), cl(66 + Math.sin(a) * d * 0.62), 10 + rg() * 8, 0.9); }
+    cx.globalCompositeOperation = 'source-atop';
+    const lg = cx.createLinearGradient(0, oy, 0, oy + 128); lg.addColorStop(0, '#ffffff'); lg.addColorStop(0.55, '#e4e9f4'); lg.addColorStop(1, '#a8b4cc'); cx.fillStyle = lg; cx.fillRect(ox, oy, 128, 128);   // ท้องปุยเทาอมฟ้า
+    cx.globalCompositeOperation = 'source-over';
+  }
+  const tex = new THREE.CanvasTexture(cv), rng = U.rng(2026), N = B.clouds, g = INTRO.bg, items = [];
+  const [s0, s1] = B.slab, per = [-g.h[1], g.h[0]];
+  for (let i = 0; i < N; i++) {
+    const D = 15 + 430 * Math.pow(rng(), 1.05), lat = (rng() + rng() - 1) * (60 + D * 0.22), low = D < 110 ? 9 : 0;
+    const y = s0 + low + (s1 - s0 - low) * rng();
+    items.push({ D, x: g.T[0] - g.h[0] * D + per[0] * lat, z: g.T[1] - g.h[1] * D + per[1] * lat, y, w: 20 + rng() * 30, tone: U.clamp((y - s0) / (s1 - s0) * 0.7 + rng() * 0.3, 0, 1), a: 0.4 + rng() * 0.5, v: Math.floor(rng() * 4) });
+  }
+  items.sort((p, q) => p.D - q.D);
+  const pos = new Float32Array(N * 4), tn = new Float32Array(N * 3);
+  items.forEach((c, i) => { pos.set([c.x, c.y, c.z, c.w], i * 4); tn.set([c.tone, c.a, c.v], i * 3); });
+  const base = new THREE.PlaneGeometry(1, 1), geo = new THREE.InstancedBufferGeometry();
+  geo.index = base.index; geo.setAttribute('position', base.getAttribute('position')); geo.setAttribute('uv', base.getAttribute('uv'));
+  geo.setAttribute('iPos', new THREE.InstancedBufferAttribute(pos, 4)); geo.setAttribute('iTone', new THREE.InstancedBufferAttribute(tn, 3)); geo.instanceCount = N;
+  const mat = new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false, fog: false,
+    uniforms: { uMap: { value: tex }, uLit: { value: new THREE.Color(1, 1, 1) }, uShade: { value: new THREE.Color(0.6, 0.65, 0.8) }, uAlpha: { value: 1 } },
+    vertexShader: 'attribute vec4 iPos; attribute vec3 iTone; varying vec2 vUv; varying vec3 vT; varying float vD;\n' +
+      'void main(){ vec4 mv = viewMatrix * vec4(iPos.xyz, 1.0); mv.xy += position.xy * iPos.w; vD = -mv.z; vT = iTone;\n' +
+      '  vec2 cell = vec2(mod(iTone.z, 2.0), floor(iTone.z / 2.0)); vUv = (uv + cell) * 0.5; gl_Position = projectionMatrix * mv; }',
+    fragmentShader: 'uniform sampler2D uMap; uniform vec3 uLit; uniform vec3 uShade; uniform float uAlpha; varying vec2 vUv; varying vec3 vT; varying float vD;\n' +
+      'void main(){ vec4 t = texture2D(uMap, vUv); float a = t.a * vT.y * uAlpha * smoothstep(4.0, 20.0, vD) * (1.0 - smoothstep(520.0, 800.0, vD));\n' +
+      '  if (a < 0.004) discard; gl_FragColor = vec4(mix(uShade, uLit, vT.x) * t.rgb, a); }',
+  });
+  const im = INTRO.clouds = new THREE.Mesh(geo, mat); im.frustumCulled = false; im.renderOrder = 3; im.visible = true; R.scene.add(im);
+  INTRO.bird = true; INTRO.birdPhase = 'bird-high'; INTRO.clip(true);
+  R.camAlt = pc; R.fogAlt = [80, 820]; INTRO._tilt0 = R.tilt; R.tilt = 0;
+};
+
+// อัปเดตกล้อง/เมฆ/ปีก ที่นาฬิกาฉาก T (เรียกทุกเฟรมระหว่างช่วงชื่อเกม+สายตานก)
+INTRO.birdUpdate = (T) => {
+  const C = INTRO.cfg, B = C.bird, pc = INTRO.pcam, s = U.clamp((T - C.tBird) / (C.tCut - C.tBird), 0, 1), st = INTRO.birdState(s, T);
+  const asp = R.w / R.h; if (Math.abs(pc.aspect - asp) > 1e-4) { pc.aspect = asp; pc.updateProjectionMatrix(); }
+  pc.position.set(st.x, st.y, st.z); pc.rotation.set(st.pitch, st.yaw, st.roll);
+  INTRO.birdPhase = st.y > B.slab[1] + 3 ? 'bird-high' : st.y > B.slab[0] - 2 ? 'bird-cloud' : 'bird-low';
+  // ปีก: ติดกับกล้องที่ระยะ 1.2 มุมล่างซ้าย/ขวา กระพือขึ้นลงตามจังหวะ
+  const hh = 1.2 * Math.tan(B.fov * Math.PI / 360), hw = hh * asp, fl = Math.sin(st.ph), sc = hh * 0.8;
+  INTRO.wings.forEach((m, i) => { const sg = i ? -1 : 1; m.position.set(sg * hw * 0.5, -hh * 0.98, -1.2); m.scale.set(sg * sc, sc, sc); m.rotation.set(0.25, sg * 0.35, sg * (-0.2 + fl * 0.3)); m.visible = true; });
+  const c = LOOK.cur, u = INTRO.clouds.material.uniforms, sun = c.sun;
+  u.uLit.value.setRGB(1, 1, 1).lerp(sun, 0.3); u.uShade.value.copy(c.skyLow).lerp(_inGrey.setRGB(0.55, 0.6, 0.75), 0.5).multiplyScalar(0.85);
+  INTRO.clouds.visible = true;
+};
+const _inGrey = new THREE.Color();
+
+// คืนกล้องมุมสูงปกติ (เรียกซ้ำได้)
+INTRO.birdEnd = () => {
+  if (!INTRO.pcam) return;
+  R.camAlt = null; R.fogAlt = null; if (INTRO._tilt0 !== undefined) { R.tilt = INTRO._tilt0; INTRO._tilt0 = undefined; }
+  INTRO.bird = false; INTRO.clouds.visible = false; for (const m of INTRO.wings) m.visible = false;
 };
 
 /* ---- 71-jobs.js ---- */
@@ -6545,7 +6682,7 @@ function frame(now) {
   MIND.update(dt);
   INTERACT.ui();
   for (const r of [RIG.hero, RIG.raven]) {   // ตัวเราแสดงเฉพาะร่างปัจจุบัน (นั่งอยู่ที่เดิมตอนบังคับจิต)
-    const on = r === RIG.player; r.root.visible = on; if (r.ghost) r.ghost.root.visible = on;
+    const on = r === RIG.player && !INTRO.bird; r.root.visible = on; if (r.ghost) r.ghost.root.visible = on;
   }
   RIG.update(RIG.player, PLAYER, PLAYER.ctl ? _IDLE : INPUT, dt); RIG.updateBlob(PLAYER, PLAYER.kind.scale);
   BODY.render(dt);
@@ -6553,7 +6690,7 @@ function frame(now) {
   CAM.update(dt);
   SENSE.draw(dt);
   LOOK.update(dt);
-  if (!(INTRO.on && INTRO.camOwn && CAM.span > 130)) LOOK.fitShadow(LOOK.focus.x, LOOK.focusY, LOOK.focus.z, CAM.viewW, CAM.viewH);   // ฉากเปิดเกมตอนซูมไกล: ไม่อัปเดตแผนที่เงา (กรอบเงากว้างจน draw call พุ่งเกิน 150)
+  if (!(INTRO.on && (INTRO.bird || (INTRO.camOwn && CAM.span > 130)))) LOOK.fitShadow(LOOK.focus.x, LOOK.focusY, LOOK.focus.z, CAM.viewW, CAM.viewH);   // ฉากเปิดเกมตอนซูมไกล: ไม่อัปเดตแผนที่เงา (กรอบเงากว้างจน draw call พุ่งเกิน 150)
   FX.update();
   TOWER.updateLights(dt);
   WEATHER.update();
@@ -6697,7 +6834,7 @@ DBG.tutMark = (...ids) => { ids.forEach((i) => TUT.mark(i)); if (TUT.cur) TUT.hi
 DBG.starter = () => { if (TALK.on) TALK.end(true); STORY.set('opened'); return STORY.s; };   // (ตรวจ) ข้ามบทพูดเปิดเกม
 // ---- ฉากเปิดเกม (70-intro.js) ----
 // intro() = สถานะ (เปิดอยู่ไหม · t · เฟส · ร่าง · ความหนาเมฆ · ความทึบชื่อเกม/จอขาว/จอดำ · ซูม · ปุ่มข้าม) · introSeek(t) = กระโดดไปเวลา t (ข้ามไปข้างหน้าเท่านั้น: ก้าวทีละเฟรมจนถึง t) · introSkip() = กดข้าม
-Object.defineProperty(DBG, 'introState', { enumerable: true, get: () => ({ on: INTRO.on, t: _f2(INTRO.t), phase: INTRO.phase, skipped: INTRO.skipped, form: PLAYER.form, cloudA: _f2(INTRO.cloudA), cloudsVisible: !!(INTRO.clouds && INTRO.clouds.visible), title: _f2(INTRO.title), white: _f2(INTRO.white), dark: _f2(INTRO.dark),
+Object.defineProperty(DBG, 'introState', { enumerable: true, get: () => ({ on: INTRO.on, t: _f2(INTRO.t), phase: INTRO.phase, skipped: INTRO.skipped, form: PLAYER.form, cloudA: _f2(INTRO.cloudA), cloudsVisible: !!(INTRO.clouds && INTRO.clouds.visible), title: _f2(INTRO.title), white: _f2(INTRO.white), dark: _f2(INTRO.dark), bird: INTRO.bird, armed: INTRO.armed, ot: _f2(INTRO.ot), clip: !!INTRO.clipOn, card: _f2(INTRO.card),
   span: _f2(CAM.span), ty: _f2(CAM.ty), camOwn: INTRO.camOwn, lock: WIZ.lock, hud: !!document.body.classList.contains('intro'), skipBtn: INTRO.el ? getComputedStyle(INTRO.el.root).display !== 'none' : false, seen: !!SAVE.read().introSeen,
   player: { x: _f2(PLAYER.x), y: _f2(PLAYER.y), z: _f2(PLAYER.z), yaw: _f2(PLAYER.yaw), state: PLAYER.state }, inside: HOUSE.inside ? HOUSE.inside.id : null, talk: TALK.on, calls: DBG.calls, maxCalls: DBG.maxCalls }) });
 DBG.intro = () => DBG.introState;
@@ -6714,6 +6851,17 @@ DBG.jobsSet = (k, v) => { STORY.s[k] = v; STORY.save(); return STORY.s; };
 DBG.ring = () => { JOBS.ring(); return JOBS.T.stage; };
 DBG.guards = () => (JOBS.e.guards || []).map((e) => ({ id: e.id, x: _f2(e.x), z: _f2(e.z), yaw: _f2(e.yaw), v: _f2(e.sus.v), lvl: e.sus.lvl, seen: e.sus.seenNow, mode: e.ai.mode }));
 DBG.zone = () => { const z = DESV.zone; return { z: [z.x0, z.x1, z.z0, z.z1].map(_f2), inZone: !!SENSE.zoneAt(PLAYER.camBody()), threat: SENSE.c ? _f2(SENSE.c.threat) : null }; };
+// (ตรวจ) ฉากเปิดเกมมุมสายตานก: ระนาบตัดเกาะอื่น + ฉายขอบเกาะหิมะ/ทะเลทราย (และหินลอย) ลงจอดของกล้องนก ณ นาฬิกาฉาก T — นับจุดที่ "จะเห็น" ถ้าไม่ตัด · DBG.introClip(false) ปิดระนาบเพื่อดูว่าไม่ตัดแล้วเห็นจริงไหม
+DBG.introClip = (b) => { INTRO.clip(!!b); return INTRO.clipOn; };
+DBG.introBird = (T) => {
+  if (!INTRO.pcam) return null; INTRO.birdUpdate(T); const pc = INTRO.pcam; pc.updateMatrixWorld(); const v = new THREE.Vector3(), out = {};
+  for (const isl of WORLD.islands) {
+    if (isl.id === 'home') continue; let inF = 0, tot = 0;
+    for (let a = 0; a < 360; a += 15) { const q = a * Math.PI / 180, r = WORLD.outline(isl, q); for (const k of [0, 0.5, 1]) { v.set(isl.x + Math.cos(q) * r * k, isl.baseH, isl.z + Math.sin(q) * r * k).project(pc); tot++; if (v.z < 1 && Math.abs(v.x) <= 1 && Math.abs(v.y) <= 1) inF++; } }
+    out[isl.id] = inF + '/' + tot;
+  }
+  return { bg: INTRO.bg, cam: [pc.position.x, pc.position.y, pc.position.z].map(_f2), vis: out, clip: INTRO.clipOn };
+};
 
 })();</script>
 </body>
