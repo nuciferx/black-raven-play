@@ -1154,8 +1154,10 @@ HOUSE.build = (plan, scene) => {
   for (const o of defs) {
     const g = pick(o.wall), w = o.u1 - o.u0;
     if (o.kind === 'hole') {   // รูหนู: ปากรูมืดเป็นรูปโค้งหิน + ประตูผีแท็ก small (ตัวที่ไม่มีแท็กผ่านไม่ได้)
-      vis(g, wbox(o.wall, o.u0 - 0.1, o.u0, -0.3, o.v1 + 0.08, -T - 0.02, 0.06), cStone); vis(g, wbox(o.wall, o.u1, o.u1 + 0.1, -0.3, o.v1 + 0.08, -T - 0.02, 0.06), cStone);
-      vis(g, wbox(o.wall, o.u0 - 0.1, o.u1 + 0.1, o.v1, o.v1 + 0.1, -T - 0.02, 0.06), cStone);
+      if (!plan.holeArch) {   // holeArch = แปลนวาดขอบรูเอง (ร้านขนมปัง: ช่องโค้ง)
+        vis(g, wbox(o.wall, o.u0 - 0.1, o.u0, -0.3, o.v1 + 0.08, -T - 0.02, 0.06), cStone); vis(g, wbox(o.wall, o.u1, o.u1 + 0.1, -0.3, o.v1 + 0.08, -T - 0.02, 0.06), cStone);
+        vis(g, wbox(o.wall, o.u0 - 0.1, o.u1 + 0.1, o.v1, o.v1 + 0.1, -T - 0.02, 0.06), cStone);
+      }
       vis(g, wbox(o.wall, o.u0, o.u1, -0.3, o.v1, -T + 0.05, -T + 0.1), cDark);
       solid(wbox(o.wall, o.u0, o.u1, -0.3, o.v1, -T, 0), { needTag: 'small', wall: o.wall, hole: true });
     } else if (o.kind === 'bars') {   // ลูกกรงเหล็ก: กรอบหิน + ซี่แนวตั้งกลางผนัง + ราวขวาง · ตัวกั้นผ่านไม่ได้แต่ลำแสงมองทะลุได้ (needTag 'seethru' ไม่มีใครมี · SENSE มองผ่านได้)
@@ -1169,9 +1171,11 @@ HOUSE.build = (plan, scene) => {
       vis(g, wbox(o.wall, o.u0 - 0.08, o.u0, o.v0, o.v1, -T - 0.02, 0.08), cTim); vis(g, wbox(o.wall, o.u1, o.u1 + 0.08, o.v0, o.v1, -T - 0.02, 0.08), cTim);
       vis(g, wbox(o.wall, o.u0, o.u1, o.v0, o.v1, -T + 0.04, -T + 0.1), cDark);
     } else {   // ประตู/หน้าต่าง: กรอบ + ตัวกั้น (กล่อง SOLID ปิดช่อง) · หน้าต่างมีเชือกดึงกลอนด้านใน
-      const fr = o.kind === 'door' ? 0.1 : 0.12;
-      vis(g, wbox(o.wall, o.u0 - fr, o.u0, o.v0, o.v1 + fr, -T - 0.03, 0.09), cTim); vis(g, wbox(o.wall, o.u1, o.u1 + fr, o.v0, o.v1 + fr, -T - 0.03, 0.09), cTim);
-      vis(g, wbox(o.wall, o.u0 - fr, o.u1 + fr, o.v1, o.v1 + fr, -T - 0.03, 0.09), cTim);
+      // กรอบประตู (วงกบ + คาน + ธรณี) ใส่ในชุดที่ไม่จาง (shell) ไม่ใช่ผนัง → ผนังจางแล้วยังเห็นตำแหน่งประตู · กรอบหน้าต่างอยู่กับผนังเหมือนเดิม
+      const door = o.kind === 'door', fr = door ? 0.14 : 0.12, fg = door ? shell : g, dk = door ? GFX.mul(cTim, 1.15) : cTim, nb = door ? -T - 0.05 : -T - 0.03, nf = door ? 0.13 : 0.09;
+      vis(fg, wbox(o.wall, o.u0 - fr, o.u0, o.v0, o.v1 + fr, nb, nf), dk); vis(fg, wbox(o.wall, o.u1, o.u1 + fr, o.v0, o.v1 + fr, nb, nf), dk);
+      vis(fg, wbox(o.wall, o.u0 - fr, o.u1 + fr, o.v1, o.v1 + fr, nb, nf), dk);
+      if (door) vis(shell, wbox(o.wall, o.u0, o.u1, o.v0 - 0.02, o.v0 + 0.07, nb, nf + 0.05), GFX.mul(cStone, 0.9));   // ธรณีประตู
       if (o.kind === 'window') vis(g, wbox(o.wall, o.u0 - fr - 0.06, o.u1 + fr + 0.06, o.v0 - 0.1, o.v0, -T - 0.03, 0.2), cTim);
       o.blocker = solid(wbox(o.wall, o.u0, o.u1, o.v0, o.v1, -T, 0), { wall: o.wall, op: o.id }); o.blocker.on = !o.open;
       if (o.kind === 'window') {
@@ -1244,18 +1248,40 @@ HOUSE.build = (plan, scene) => {
       const w = WALLV[o.wall], ax = px + (w.nx ? w.ox * (W / 2 + T) : 0), az = pz + (w.nz ? w.oz * (D / 2 + T) : 0), uc = (o.u0 + o.u1) / 2;
       const P = (u, n) => [ax + u * w.tx + n * w.nx, az + u * w.tz + n * w.nz];
       const [ox, oz] = P(uc, 0.9), [ix, iz] = P(uc, -T - 0.8);
-      INTERACT.add({ id: h.id + '.' + o.id + '.out', x: ox, y: base + 0.3, z: oz, r: 1.1, dy: 1.5, tags: ['hands'], house: h.id, can: () => !o.locked || o.open,
+      const [lx, lz] = P(uc, -T * 0.5), ly = base + Math.min(o.v1, 2.1) * 0.55 + 0.4;   // ป้ายลอยที่ตัวประตูจริง (กลางบานประตู) ไม่ใช่กลางห้อง
+      INTERACT.add({ id: h.id + '.' + o.id + '.out', x: ox, y: base + 0.3, z: oz, lx, lz, ly, r: 1.1, dy: 1.5, tags: ['hands'], house: h.id, can: () => !o.locked || o.open,
         text: () => (o.open ? 'ปิดประตู' : 'เปิดประตู'), run: () => HOUSE.toggle(h, o) });
-      INTERACT.add({ id: h.id + '.' + o.id + '.in', x: ix, y: base + FY + 0.3, z: iz, r: 1.1, dy: 1.5, tags: ['hands'], house: h.id, inHouse: h.id,
+      INTERACT.add({ id: h.id + '.' + o.id + '.in', x: ix, y: base + FY + 0.3, z: iz, lx, lz, ly, r: 1.1, dy: 1.5, tags: ['hands'], house: h.id, inHouse: h.id,
         text: () => (o.open ? 'ปิดประตู' : 'เปิดประตู'), run: () => HOUSE.toggle(h, o) });
-      INTERACT.add({ id: h.id + '.' + o.id + '.locked', x: ox, y: base + 0.3, z: oz, r: 1.1, dy: 1.5, tags: ['hands'], house: h.id, can: () => o.locked && !o.open, hint: true,
+      INTERACT.add({ id: h.id + '.' + o.id + '.locked', x: ox, y: base + 0.3, z: oz, lx, lz, ly, r: 1.1, dy: 1.5, tags: ['hands'], house: h.id, can: () => o.locked && !o.open, hint: true,
         text: () => 'ประตูล็อก', run: () => UI.toast(o.lockMsg || 'ประตูล็อกอยู่ — ต้องหาทางอื่นเข้า', 3200) });
+      HOUSE.makeSpill(h, o, P);
     }
   }
   // รอยเท้าบ้านสำหรับการวางของ/AI เดินเตร่ (ไม่ดันตัวที่เดินจริง)
   if (!tw || tw.k === 1) COLL.addBox(px, pz, W / 2 + T + 0.15, D / 2 + T + 0.15, 0, true, h.cid);
   HOUSE.list.push(h); HOUSE.byId[h.id] = h;
   return h;
+};
+
+// แถบแสงจากข้างนอกลอดประตูที่เปิดลงบนพื้นห้อง (ไม่ใช่วงรอบตัว): แผ่นสี่เหลี่ยมคางหมูบนพื้นด้านในตรงประตู · ผสมสีอุ่นทับพื้น (alpha ต่อจุดยอด ไล่จางเข้าไปในห้อง) · ความแรงตาม o.a (บานเปิดแค่ไหน) × แสงวัน
+// SPILL.cfg: len = ยาวเข้าห้อง · widen = บานปลายออกด้านละเท่านี้ · day/night = สีแสง (RGB 0..1) · strength = ความทึบสูงสุด [กลางวัน, กลางคืน] · ไม่เพิ่ม PointLight · +1 draw call เฉพาะตอนมองเห็นบ้านที่ประตูเปิด
+const SPILL = { cfg: { len: 2.6, widen: 0.7, day: [1.0, 0.94, 0.72], night: [0.45, 0.55, 0.85], strength: [0.42, 0.16] } };
+HOUSE.makeSpill = (h, o, P) => {
+  const C = SPILL.cfg, n0 = -HOUSE.T + 0.02, n1 = n0 - C.len, y = h.base + HOUSE.FY + 0.025;
+  const q = [P(o.u0, n0), P(o.u1, n0), P(o.u1 + C.widen, n1), P(o.u0 - C.widen, n1)], pos = [], col = [];
+  const a = [q[0], q[1], q[2], q[0], q[2], q[3]], k = [1, 1, 0, 1, 0, 0];
+  a.forEach((p, i) => { pos.push(p[0], y, p[1]); col.push(1, 1, 1, k[i]); });
+  const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 4));
+  const mat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false, side: THREE.DoubleSide, toneMapped: false });
+  const m = new THREE.Mesh(geo, mat); m.castShadow = false; m.receiveShadow = false; m.renderOrder = 2; m.visible = false; m.frustumCulled = false; R.scene.add(m);
+  o.spill = m;
+};
+HOUSE.spillUpdate = (h, o) => {
+  const m = o.spill, C = SPILL.cfg, v = o.a * h.flv * (1 - h.fade);   // ตอนอยู่นอกบ้าน (h.fade=1) ผนังบังอยู่แล้ว ไม่ต้องวาด
+  m.visible = v > 0.02; if (!m.visible) return;
+  const k = DN.night, d = C.day, n = C.night;
+  m.material.color.setRGB(U.lerp(d[0], n[0], k), U.lerp(d[1], n[1], k), U.lerp(d[2], n[2], k)); m.material.opacity = U.lerp(C.strength[0], C.strength[1], k) * v;
 };
 
 // บานประตู/หน้าต่าง: กลุ่มหมุนรอบบานพับ (ที่ขอบ u0) ออกนอกบ้าน · แกนกลุ่ม: X = ตามผนัง, Y = ขึ้น, Z = ออกนอก (มือขวา)
@@ -1388,7 +1414,8 @@ HOUSE.update = (dt, cam) => {
     for (const o of h.leaves) {
       const t = o.open ? 1 : 0; o.a = Math.abs(o.a - t) < 0.004 ? t : U.damp(o.a, t, 6, dt);
       o.leaf.pivot.rotation.y = -o.a * 1.75;
-      o.leaf.root.visible = h.wa[o.wall] > 0.5 && h.flv > 0.03;
+      o.leaf.root.visible = (o.kind === 'door' || h.wa[o.wall] > 0.5) && h.flv > 0.03;   // บานประตูไม่จางตามผนัง
+      if (o.spill) HOUSE.spillUpdate(h, o);
     }
   }
 };
@@ -1468,7 +1495,7 @@ INTERACT.ui = () => {
     const B = INTERACT.who(), v = INTERACT._w || (INTERACT._w = new THREE.Vector3()); v.set(B.x, B.y + (B.kind.top || 1) * B.kind.scale * (B.s || 1) + 0.55, B.z).project(R.cam);
     bar.el.style.display = 'block'; bar.el.style.left = ((v.x * 0.5 + 0.5) * R.w).toFixed(1) + 'px'; bar.el.style.top = ((-v.y * 0.5 + 0.5) * R.h).toFixed(1) + 'px'; bar.fill.style.transform = 'scaleX(' + pg.toFixed(3) + ')';
   } else bar.el.style.display = 'none';
-  const v = INTERACT._v || (INTERACT._v = new THREE.Vector3()); v.set(o.x, o.y + 1.1, o.z).project(R.cam);
+  const v = INTERACT._v || (INTERACT._v = new THREE.Vector3()); v.set(o.lx !== undefined ? o.lx : o.x, o.ly !== undefined ? o.ly : o.y + 1.1, o.lz !== undefined ? o.lz : o.z).project(R.cam);   // lx/ly/lz = ตำแหน่งป้ายเอง (ประตู: ลอยที่บานประตู)
   UI.setUse((UI.touch ? '' : 'F · ') + o.text(), (v.x * 0.5 + 0.5) * R.w, (-v.y * 0.5 + 0.5) * R.h);
 };
 INTERACT.mkBar = () => {
@@ -1488,7 +1515,7 @@ BAKERY.oven = [-2.4, -3.8];
 BAKERY.plan = () => ({
   id: 'baker', x: 12, z: -9, W: 10, D: 12, wallH: 3.8, ridge: 3.6, colors: { wall: '#ecdfc2', roof: '#b5523b', timber: '#6b4a2f', floor: '#9a7a52', door: '#7a5232' },
   doors: [{ wall: 'S', at: 0, w: 1.3, h: 2.2, locked: true }], windows: [{ wall: 'S', at: -3.4, w: 1.8, h: 1.2, sill: 1.0 }, { wall: 'E', at: -3.4, w: 1.6, h: 1.2, sill: 1.0 }],
-  holes: [{ wall: 'S', at: 4.2, w: 0.7 }], hatches: [{ wall: 'W', at: -3.2, w: 1.4, v0: 2.5, v1: 3.5 }], chimney: { x: -3.0 },
+  holes: [{ wall: 'S', at: 4.2, w: 0.7 }], holeArch: true, hatches: [{ wall: 'W', at: -3.2, w: 1.4, v0: 2.5, v1: 3.5 }], chimney: { x: -3.0 },
   furniture: [
     { kind: 'counter', x: 0, z: 3.0 }, { kind: 'breadshelf', x: -4.6, z: 3.3, rot: 1 }, { kind: 'tallshelf', x: 2.6, z: 5.4 }, { kind: 'crate', x: -4.4, z: 5.3 },
     { kind: 'oven', x: -3.0, z: -5.2 }, { kind: 'table', x: -3.4, z: -2.0, rot: 1 }, { kind: 'logs', x: -4.5, z: -4.6 }, { kind: 'barrel', x: -0.7, z: -5.4 },
@@ -1588,11 +1615,25 @@ BAKERY.build = (h, c) => {
   // รูหนูที่โคนผนังหน้าร้าน (holes ใน plan): ปากรูมืดสนิท + แป้งหกเป็นทางเลอะออกมาหน้ารู (กองไม่เป็นวง ไม่ใช่ตัวชี้ทาง — แค่ให้ตาสะดุดเมื่อมองดีๆ)
   { const hl = h.plan.holes[0], u = hl.at, fl = [GFX.rgb('#f5efdf'), GFX.rgb('#e9dfc6'), GFX.rgb('#fbf7ea')], cr = GFX.rgb('#c98a3c');
     const pt = (uu, nn, vv) => { const q = wbox('S', uu, uu, vv, vv, nn, nn); return [q[0], q[2], q[4]]; };
-    vis(wl.S, wbox('S', u - hl.w / 2 - 0.06, u + hl.w / 2 + 0.06, -0.05, 0.58, 0.0, 0.06), GFX.rgb('#080605'));   // ปากรูดำ ยื่นพ้นผิวผนังเล็กน้อย (มืดกว่าผนังรอบข้างชัดเจน)
-    [[0.05, 0.4, 0.46, 0], [-0.3, 0.95, 0.36, 1], [0.4, 1.2, 0.44, 2], [-0.1, 1.7, 0.28, 0], [-0.7, 0.5, 0.24, 1], [0.75, 0.55, 0.22, 2], [0.25, 2.25, 0.2, 1], [-0.5, 1.4, 0.22, 2]].forEach(([du, nn, r, ci], i) => {
+    // ช่องโค้งครึ่งวงกลมที่โคนผนัง (กว้าง hl.w สูง hl.h): อุดมุมบนสองข้างด้วยสีผนังให้เป็นโค้ง · ขอบไม้แตก/ถูกแทะ (ชิ้นไม้โผล่ ชิ้นสีไม้ใหม่) · ข้างในมืด (แผ่นดำหลังช่องจาก 35-house)
+    const R0 = hl.w / 2, H0 = hl.h || 0.5, cv = H0 - R0, wallc = GFX.rgb(h.plan.colors.wall), wood = GFX.rgb('#7a5a38'), raw = GFX.rgb('#d6b27a');
+    for (let i = 0; i < 7; i++) {   // อุดมุมเป็นแถบแนวนอน 7 แถบ (ตามรูปโค้ง)
+      const v0 = cv + (i / 7) * R0, v1 = cv + ((i + 1) / 7) * R0, dy = ((i + 0.5) / 7) * R0, gap = R0 - Math.sqrt(Math.max(0, R0 * R0 - dy * dy));
+      if (gap < 0.01) continue;
+      vis(wl.S, wbox('S', u - R0, u - R0 + gap, v0, v1, -T - 0.02, 0.05), wallc); vis(wl.S, wbox('S', u + R0 - gap, u + R0, v0, v1, -T - 0.02, 0.05), wallc);
+    }
+    vis(wl.S, wbox('S', u - R0 - 0.07, u - R0, -0.05, cv + 0.02, -T - 0.02, 0.07), wood); vis(wl.S, wbox('S', u + R0, u + R0 + 0.07, -0.05, cv + 0.02, -T - 0.02, 0.07), wood);   // ขอบไม้ข้างตรง
+    for (let i = 0; i < 11; i++) {   // ขอบโค้ง: ชิ้นไม้ขนาด/ความหนาไม่เท่ากัน บางชิ้นหาย (ถูกแทะ)
+      if (i === 4 || i === 8) continue;
+      const a = (i + 0.5) / 11 * Math.PI, hh = U.hash2(i, 3, 41), r = R0 + 0.02 + 0.05 * hh, cx = u + Math.cos(a) * r, cy = cv + Math.sin(a) * r, sz = 0.07 + 0.05 * U.hash2(i, 5, 42), pu = pt(cx, 0.05 + 0.03 * hh, cy);
+      wl.S.box(pu, sz, sz * (0.8 + 0.8 * hh), 0.08 + 0.04 * hh, hh > 0.55 ? raw : wood);
+    }
+    wl.S.box(pt(u - R0 * 0.55, 0.07, cv + R0 * 0.88), 0.05, 0.1, 0.05, raw); wl.S.box(pt(u + R0 * 0.7, 0.07, cv + R0 * 0.7), 0.04, 0.09, 0.05, raw);   // เสี้ยนไม้ที่แตกยื่นเข้าไป
+    vis(wl.S, wbox('S', u - R0, u + R0, -0.05, 0.16, -T, 0.02), GFX.rgb('#0a0806'));   // พื้นช่องมืด (สูงพ้นพื้นห้องที่ลอดเห็นทางช่อง)
+    [[0.3, 0.8, 0.4, 0], [-0.3, 0.95, 0.36, 1], [0.4, 1.2, 0.44, 2], [-0.1, 1.7, 0.28, 0], [-0.7, 0.5, 0.24, 1], [0.75, 0.55, 0.22, 2], [0.25, 2.25, 0.2, 1], [-0.5, 1.4, 0.22, 2]].forEach(([du, nn, r, ci], i) => {
       wl.S.ball(pt(u + du, nn, 0.03), r, 0, fl[ci], { sy: 0.07, jit: 0.35, seed: 100 + i });
     });
-    wl.S.ball(pt(u + 0.02, 0.12, 0.2), 0.12, 0, fl[0], { sy: 0.45, jit: 0.3, seed: 120 });   // แป้งเกาะที่ขอบรู
+    wl.S.ball(pt(u - 0.3, 0.2, 0.04), 0.1, 0, fl[0], { sy: 0.4, jit: 0.3, seed: 120 });   // แป้งเกาะที่ขอบรู
     [[-0.12, 0.6], [0.28, 1.2], [-0.3, 0.95]].forEach(([du, nn], i) => wl.S.ball(pt(u + du, nn, 0.05), 0.045, 0, cr, { sy: 0.7, jit: 0.2, seed: 130 + i }));   // เศษขนมปัง
   }
   BAKERY.buildHatch(h, c);
@@ -2856,8 +2897,8 @@ TOWER.puzGlow = (t) => {
 const FX = { MAX_LIGHTS: 4, lights: [], flames: [], mats: {}, built: false };
 
 const _hdr = (hex, k) => { const c = GFX.rgb(hex); return [c[0] * k, c[1] * k, c[2] * k]; };
-// วัสดุเรืองแสง: ตอนกลางวันเป็นสีมัวๆ (เหมือนกระจก/โลหะ) กลางคืนสว่างเกิน 1 (post ย่อให้เอง)
-FX.mats.win = { m: new THREE.MeshBasicMaterial(), day: _hdr('#7fa8bc', 0.9), night: _hdr('#ffb050', 2.2) };
+// วัสดุเรืองแสง: ตอนกลางวันเป็นสีเข้มทึบ (กระจกมืด/บานไม้ ไม่เรือง — แก้ 26 พ.ย. 2569) กลางคืนสว่างเกิน 1 (post ย่อให้เอง)
+FX.mats.win = { m: new THREE.MeshBasicMaterial(), day: _hdr('#26323a', 0.55), night: _hdr('#ffb050', 2.2) };
 FX.mats.bulb = { m: new THREE.MeshBasicMaterial(), day: _hdr('#cfc8a8', 0.9), night: _hdr('#ffc870', 2.6) };
 FX.mats.flame = { m: new THREE.MeshBasicMaterial(), day: _hdr('#8a6a50', 0.5), night: _hdr('#ff8a2a', 2.4) };
 FX.mats.core = { m: new THREE.MeshBasicMaterial(), day: _hdr('#8a7a60', 0.5), night: _hdr('#ffd870', 3.0) };
@@ -4168,7 +4209,7 @@ BODIES.kinds.merchant = Object.assign({}, _fkV, { name: 'พ่อค้าเ�
 // ยามตลาด (ทะเลทราย): เดินลาดตระเวนตามจุด (e.ai.pts) · มองได้ไกลปานกลาง มุมแคบกว่าชาวบ้านเล็กน้อย · ไล่จับได้ แต่ไม่ทำร้าย (จับ = ถูกพาออกนอกตลาด ของไม่หล่น)
 //   escort = ฟังก์ชันคืนจุดที่พาออกไป [x,z] (61-sense.js SENSE.catch)
 BODIES.kinds.marketguard = Object.assign({}, _fkV, { name: 'ยามตลาด', rig: 'marketguard', ai: 'patrol', wander: null, patrol: { speed: 0.5, pause: [1.4, 3.2] },
-  sense: { range: 12, ang: 0.8, near: 1.5, night: 0.5, eyeK: 0.88, hear: 1.0, fillMul: 2.4, chase: true, searchSpeed: 0.7, chaseSpeed: 1.0 },
+  sense: { range: 12, ang: 0.8, near: 1.5, night: 0.5, eyeK: 0.88, hear: 1.0, fillMul: 2.4, chase: true, persist: true, searchSpeed: 0.7, chaseSpeed: 1.0 },
   escort: () => DESV.gate });
 // สัตว์เล็กประจำเกาะ (สายสัตว์ ปลดล็อกตั้งแต่ต้น · small = ลอดรูหนู/ช่องใต้หิมะ · paws = ดึงเชือก)
 const _fkAnimal = { mode: 'walk', school: 'animal', screenK: 1.35, airAccel: 3, gravity: 24, maxFall: 30, stepDown: 0.5, stepUp: 0.2, radius: 0.16, top: 0.3, fallDepth: 22, ai: 'wander' };
@@ -4532,6 +4573,7 @@ FORM.update = (dt) => {
   if (!fx.swapped && fx.t >= FORM.swapAt) {
     fx.swapped = true;
     const yaw = P.yaw; PLAYER.setForm(fx.to, false); P.yaw = yaw; P.state = 'ground'; P.vx = P.vy = P.vz = 0; P.y = fx.y;
+    SENSE.onSwap();   // ยามที่เห็นตอนแปลงรู้ว่าร่างใหม่คือเรา
     if (fx.to === 'raven') MIND.hint('raven', UI.touch ? 'เรเวน: ปุ่ม ⤒ บินขึ้น · แปลงกลับเป็นคนเมื่อลงพื้น' : 'เรเวน: Space บินขึ้น · R แปลงกลับเป็นคนเมื่อลงพื้น');
   }
   if (fx.t >= FORM.dur) FORM.fx = null;
@@ -4780,6 +4822,7 @@ const SENSE = {
     hearGain: 0.32, soundCap: 0.78, loudMul: 1.4, wallMuffle: 0.5,   // เสียงเพิ่มได้ครั้งละ hearGain · เสียงอย่างเดียวขึ้นได้ไม่เกิน soundCap (ไม่ถึงขั้นไล่) · ผนังกั้น = ระยะเหลือเท่านี้
     dyMax: 7,                  // ต่างความสูงเกินนี้ = มองไม่เห็น
     waryTime: 90, waryMul: 1.8,// บ้านระวังตัวกี่วินาที / เติมเร็วขึ้นกี่เท่า
+    pursuit: { chase: 8, search: 10, searchR: 3.6, searchGap: 2.4, callR: 28, shoutGap: 5, shoutLife: 2.4 },   // ยามดุ (kind.sense.persist): ไล่ต่ออีก chase วิ หลังเห็นครั้งล่าสุด → ค้นรอบจุดนั้น search วิ (เดินสุ่มจุดรัศมี searchR เปลี่ยนทุก searchGap วิ) → เลิก · callR = ระยะที่เรียกยามคนอื่นมาช่วย · shoutGap = พักตะโกนซ้ำ · shoutLife = ข้อความลอยกี่วิ
     catchR: 1.05, catchDy: 2.0, grace: 5,   // ระยะโดนตัว · ต่างความสูงที่ยังโดน (บินสูงกว่านี้หนีพ้น) · พักไม่ให้ถูกจับซ้ำกี่วินาที
   },
   LV: ['เฉยๆ', 'สงสัย', 'ค้นหา', 'ไล่'],
@@ -4896,7 +4939,18 @@ SENSE.act = (e, s, S, dt, ctx) => {
   const chase = s.lvl === 3 && S.chase, B = ctx.B;
   const tx = chase && s.seenNow ? B.x : (s.last ? s.last.x : null), tz = chase && s.seenNow ? B.z : (s.last ? s.last.z : null);
   if (tx === null) return;
-  const dx = tx - e.x, dz = tz - e.z, d = Math.hypot(dx, dz), sp = chase ? S.chaseSpeed : S.searchSpeed;
+  let sp = chase ? S.chaseSpeed : S.searchSpeed, gx = tx, gz = tz;
+  if (S.persist && s.last && (s.lvl === 2 || (s.lvl === 3 && !s.seenNow))) {   // ยามดุ: ไปจุดล่าสุดก่อน ถึงแล้วเดินค้นรอบๆ จุดนั้น (สุ่มจุดใหม่ทุก searchGap วิ)
+    const P = SENSE.cfg.pursuit;
+    if (s.lastRef !== s.last) { s.lastRef = s.last; s.atLast = false; s.sw = null; }
+    if (Math.hypot(s.last.x - e.x, s.last.z - e.z) <= 1.5) s.atLast = true;
+    if (s.atLast) {
+      s.swT = (s.swT || 0) - dt;
+      if (!s.sw || s.swT <= 0 || Math.hypot(s.sw[0] - e.x, s.sw[1] - e.z) < 0.9) { s.sn = (s.sn || 0) + 1; const a = U.hash2(s.sn, e.id.length * 3, 77) * 6.283, r = 1.2 + (P.searchR - 1.2) * U.hash2(s.sn, 5, 78); s.sw = [s.last.x + Math.cos(a) * r, s.last.z + Math.sin(a) * r]; s.swT = P.searchGap; }
+      gx = s.sw[0]; gz = s.sw[1]; sp = S.searchSpeed * 1.15;
+    }
+  }
+  const dx = gx - e.x, dz = gz - e.z, d = Math.hypot(dx, dz);
   if (s.stuck > 0) s.stuck -= dt;
   if (d > (chase ? 0.6 : 1.2) && s.stuck <= 0) {   // เดินไปที่จุดล่าสุดที่เห็น/ได้ยิน (ไล่ = วิ่งตามตัวจริง)
     let ux = dx / d, uz = dz / d;
@@ -4911,21 +4965,60 @@ SENSE.think = (e, dt, ctx) => {
   const S = e.kind.sense, C = SENSE.cfg, s = e.sus, B = ctx.B;
   if (e.state === 'gone' || e.ctrl) { s.seenNow = false; s.sees = 0; return; }
   if (SENSE.freeze && e.ai.pts) { s.seenNow = false; s.sees = 0; s.v = 0; s.lvl = s.plvl = 0; return; }   // (ตัวช่วยตรวจ) แช่แข็งของเฝ้า
-  const clr = SENSE.look(e, ctx); s.sees = clr; s.seenNow = clr > 0; s.heardT += dt;
+  let clr = SENSE.look(e, ctx); const key = SENSE.subjKey(B);
+  if (S.persist && s.lvl > 0 && s.huntKey && s.huntKey !== key) clr = 0;   // ยามที่ตามหาร่างเดิมอยู่ ไม่รู้ว่าร่างใหม่ (นก) คือเรา ถ้าไม่ได้เห็นตอนแปลง (SENSE.onSwap)
+  s.sees = clr; s.seenNow = clr > 0; s.heardT += dt;
   if (clr > 0 && ctx.threat > 0) {
+    if (S.persist) s.huntKey = key;
     const w = ctx.house && ctx.house.wary > 0 ? C.waryMul : 1;
     s.v = Math.min(1, s.v + C.fillSight * (S.fillMul || 1) * ctx.threat * clr * w * dt);   // fillMul = ชนิดนี้เติมความสงสัยไวกว่าชาวบ้านกี่เท่า (ของเฝ้า)
     s.last = { x: B.x, y: B.y, z: B.z }; s.seenT = 0;
   } else { s.seenT += dt; }
   if (clr <= 0 || ctx.threat <= 0) { if (s.seenT > C.hold && s.heardT > C.hold) s.v = Math.max(0, s.v - C.decay * dt); }
   if (!S.chase) s.v = Math.min(s.v, C.thr[2] - 0.01);
+  if (S.persist && s.engaged) SENSE.pursue(e, s, dt, clr > 0 && ctx.threat > 0);
+  if (S.persist && !s.engaged && s.lvl === 0) s.huntKey = null;
   while (s.lvl < 3 && s.v >= C.thr[s.lvl]) s.lvl++;
   while (s.lvl > 0 && s.v < C.thr[s.lvl - 1] - C.hyst) s.lvl--;
   if (s.lvl === 0 && s.plvl > 0) { e.ai.mode = 'rest'; e.ai.t = 0.8; s.stuck = 0; }   // สงบแล้ว กลับไปเดินเตร่
-  if (s.lvl === 3 && s.plvl < 3) { s.stuck = 0; s.chk = 1.2; s.px = e.x; s.pz = e.z; }
+  if (s.lvl === 3 && s.plvl < 3) { s.stuck = 0; s.chk = 1.2; s.px = e.x; s.pz = e.z; if (S.persist && !s.engaged) SENSE.engage(e, ctx, 'spot'); }
   s.plvl = s.lvl;
   SENSE.act(e, s, S, dt, ctx);
   if (s.lvl === 3 && S.chase && SENSE.grace <= 0 && !WIZ.lock && Math.hypot(B.x - e.x, B.z - e.z) <= C.catchR && Math.abs(B.y - e.y) <= C.catchDy) SENSE.catch(e, ctx);
+};
+
+// ---- ยามดุ (kind.sense.persist) ----
+// ผู้ถูกมองคือ "ร่างไหน": ตัวเราใช้ชื่อร่าง (human/raven) · เป้าหมายที่บังคับจิตใช้ id
+SENSE.subjKey = (B) => (B === PLAYER ? PLAYER.form : B.id);
+// เริ่มตื่น (ถึงขั้นไล่ครั้งแรก): ตะโกน + เรียกยามคนอื่นในระยะ callR มาที่ตำแหน่งนี้
+SENSE.engage = (e, ctx, line) => {
+  const s = e.sus, B = ctx.B; s.engaged = true; s.alertT = 0; s.huntKey = SENSE.subjKey(B); s.last = { x: B.x, y: B.y, z: B.z };
+  SENSE.shout(e, line, true);
+  const P = SENSE.cfg.pursuit, C = SENSE.cfg;
+  for (const o of SENSE.list) {
+    if (o === e || !o.kind.sense.persist || o.state === 'gone' || o.ctrl || o.sus.engaged) continue;
+    if (Math.hypot(o.x - e.x, o.z - e.z) > P.callR || Math.abs(o.y - e.y) > 6) continue;
+    const t = o.sus; t.engaged = true; t.alertT = 0; t.huntKey = s.huntKey; t.last = { x: B.x, y: B.y, z: B.z }; t.v = Math.max(t.v, C.thr[2] + 0.02); t.heardT = 0;   // ได้ตำแหน่งแล้ววิ่งมา (ยังไม่เห็นตัวก็ไล่ไปจุดนั้น)
+    SENSE.shout(o, 'reply', true);
+  }
+};
+// ตื่นอยู่: ช่วงไล่ (chase วิหลังเห็นล่าสุด) ค้ำความสงสัยไว้ที่ขั้นไล่ · ช่วงค้นหา (search วิ) ค้ำไว้ที่ขั้นค้นหา · หมดเวลา = เลิก (ความสงสัยตก ยามกลับไปลาดตระเวน)
+SENSE.pursue = (e, s, dt, saw) => {
+  const P = SENSE.cfg.pursuit, C = SENSE.cfg;
+  if (saw) s.alertT = 0; else s.alertT += dt;
+  if (s.alertT < P.chase) s.v = Math.max(s.v, C.thr[2] + 0.02);
+  else if (s.alertT < P.chase + P.search) { if (!saw) s.v = U.clamp(s.v, C.thr[1] + 0.06, C.thr[2] - C.hyst - 0.01); }
+  else { s.engaged = false; s.huntKey = null; s.atLast = false; s.sw = null; s.v = Math.min(s.v, C.thr[0] - C.hyst - 0.01); }
+};
+// แปลงร่างเกิดขึ้น (เรียกจาก FORM.update หลังสลับรูป): ยามที่ "เห็นตอนแปลง" รู้ว่าร่างใหม่คือเรา (ตะโกนชี้ฟ้า ไล่ต่อ) · ยามที่ตื่นอยู่แต่ไม่เห็น = ยังตามหาร่างเดิม (นกไม่ใช่เป้าหมาย จนกว่าจะเลิก)
+SENSE.onSwap = () => {
+  const ctx = SENSE.c = SENSE.ctx(), B = ctx.B, key = SENSE.subjKey(B);
+  for (const e of SENSE.list) {
+    const S = e.kind.sense; if (!S.persist || e.state === 'gone' || e.ctrl) continue;
+    const s = e.sus; if (!s.seenNow || !(s.lvl > 0 || ctx.threat > 0)) continue;
+    s.huntKey = key; s.last = { x: B.x, y: B.y, z: B.z }; s.alertT = 0; s.v = Math.max(s.v, SENSE.cfg.thr[2] + 0.02); s.seenT = 0;
+    s.engaged = true; SENSE.shout(e, 'sky', true);
+  }
 };
 
 // ---- ถูกจับ ----
@@ -4964,7 +5057,7 @@ SENSE.catch = (e, ctx) => {
   if (h && h.plan.tower) TOWER.onCaught();   // รีเซ็ตของเฝ้าทุกตัวกลับจุดเริ่ม
   UI.toast(msg, 4200);
   SENSE.lastCatch = { by: e.id, t: DBG.t || 0, house: h ? h.id : null, msg };
-  for (const o of SENSE.list) { o.sus.v = Math.min(o.sus.v, 0.25); o.sus.last = null; }
+  for (const o of SENSE.list) { o.sus.v = Math.min(o.sus.v, 0.25); o.sus.last = null; o.sus.engaged = false; o.sus.huntKey = null; o.sus.atLast = false; }   // จับแล้วจบเรื่อง: ยามทุกตัวเลิกตื่น
   e.sus.v = 0.3; e.sus.heardT = e.sus.seenT = 0;
 };
 
@@ -5116,6 +5209,7 @@ SENSE.CSS = `
 .sb{position:fixed;left:0;top:0;width:46px;height:9px;margin:-9px 0 0 -23px;border-radius:5px;background:rgba(8,12,22,.6);border:1.5px solid rgba(255,255,255,.7);display:none;pointer-events:none;box-sizing:content-box;z-index:4}
 .sb i{display:block;height:100%;width:100%;transform-origin:0 50%;border-radius:3px}
 .sb b{position:absolute;left:50%;top:-17px;transform:translateX(-50%);color:#fff;font:700 14px/1 system-ui,sans-serif;text-shadow:0 1px 2px #000}
+.sh{position:fixed;left:0;top:0;transform:translate(-50%,-100%);padding:4px 11px;border-radius:12px;background:rgba(255,246,220,.95);color:#8a1d0e;font:800 15px/1.25 system-ui,"Leelawadee UI",Tahoma,sans-serif;white-space:nowrap;border:2px solid #b8452f;box-shadow:0 2px 6px rgba(0,0,0,.35);display:none;pointer-events:none;z-index:6}
 #hm{position:fixed;right:calc(12px + env(safe-area-inset-right,0px));top:calc(10px + env(safe-area-inset-top,0px));width:56px;text-align:center;pointer-events:none;z-index:5;font-family:system-ui,"Leelawadee UI",Tahoma,sans-serif}
 #hm .ic{width:44px;height:44px;margin:0 auto;border-radius:50%;border:2.5px solid;background:rgba(8,12,22,.55);display:flex;align-items:center;justify-content:center;transition:border-color .45s,color .45s;box-sizing:border-box}
 #hm svg{width:28px;height:28px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
@@ -5136,12 +5230,25 @@ SENSE.buildFx = (scene) => {
   for (let i = 0; i < total; i++) pos[i * 3 + 1] = -9999;
   // DOM: แถบความสงสัยต่อคน + มาตรวัดการซ่อน
   const st = document.createElement('style'); st.textContent = SENSE.CSS; document.head.appendChild(st);
-  for (const e of SENSE.list) { const d = document.createElement('div'); d.className = 'sb'; d.innerHTML = '<i></i><b></b>'; UI.root.appendChild(d); e.sus.el = d; e.sus.elF = d.firstChild; e.sus.elG = d.lastChild; e.sus.on = false; }
+  for (const e of SENSE.list) { const d = document.createElement('div'); d.className = 'sb'; d.innerHTML = '<i></i><b></b>'; UI.root.appendChild(d); e.sus.el = d; e.sus.elF = d.firstChild; e.sus.elG = d.lastChild; e.sus.on = false; const sh = document.createElement('div'); sh.className = 'sh'; UI.root.appendChild(sh); e.sus.elS = sh; e.sus.shT = 99; e.sus.shOn = false; }
   const hm = document.createElement('div'); hm.id = 'hm'; hm.innerHTML = '<div class="ic"></div><span></span>'; UI.root.appendChild(hm);
   SENSE.hm = { el: hm, ic: hm.firstChild, tx: hm.lastChild, st: -1 };
 };
 
 const _snp = new THREE.Vector3();
+// ตะโกน (ข้อความลอยเหนือหัวยาม): บท = SENSE.lines[key] หมุนเวียน · force = ข้ามช่วงพัก · SENSE.said = บันทึก 12 ครั้งล่าสุดให้ตรวจ
+SENSE.lines = {
+  spot: ['เฮ้ย! หยุดนะ!', 'จับมันไว้!', 'ตรงนั้น! ไอ้ขโมย!'],
+  reply: ['มาแล้ว! ไปทางนั้น!', 'ล้อมไว้!', 'ได้ยินแล้ว! ตามไป!'],
+  sky: ['มันกลายเป็นนก! บนฟ้า!', 'นกตัวนั้นแหละ! มันแปลงร่าง!'],
+};
+SENSE.said = []; SENSE._shN = 0;
+SENSE.shout = (e, key, force) => {
+  const s = e.sus, P = SENSE.cfg.pursuit; if (!s.elS || (!force && s.shT < P.shoutGap)) return false;
+  const L = SENSE.lines[key], text = L[SENSE._shN++ % L.length]; s.shT = 0; s.shText = text; s.elS.textContent = text;
+  SENSE.said.push({ id: e.id, key, text, t: DBG.t || 0 }); if (SENSE.said.length > 12) SENSE.said.shift();
+  return true;
+};
 SENSE.setCone = (e, base) => {
   const F = _snFx, FX = SENSE.fx, S = e.kind.sense, s = e.sus, P = FX.pos, C = FX.col, hide = e.state === 'gone';
   const n = F.seg + 2;
@@ -5183,6 +5290,15 @@ SENSE.draw = (dt) => {
       } else if (s.on) { s.on = false; s.el.style.display = 'none'; }
     } else if (s.on) { s.on = false; s.el.style.display = 'none'; }
   });
+  for (const e of SENSE.list) {   // ข้อความตะโกน
+    const s = e.sus; if (!s.elS) continue; s.shT += dt;
+    if (s.shT < SENSE.cfg.pursuit.shoutLife && e.state !== 'gone') {
+      _snp.set(e.x, e.y + BODY.top(e) + 0.95, e.z).project(R.cam);
+      const sx = (_snp.x * 0.5 + 0.5) * R.w, sy = (-_snp.y * 0.5 + 0.5) * R.h, a = U.clamp((SENSE.cfg.pursuit.shoutLife - s.shT) / 0.5, 0, 1);
+      s.elS.style.left = sx.toFixed(1) + 'px'; s.elS.style.top = sy.toFixed(1) + 'px'; s.elS.style.opacity = a.toFixed(2); s.elS.style.transform = 'translate(-50%,-100%) scale(' + (1 + 0.18 * Math.max(0, 1 - s.shT * 5)).toFixed(3) + ')';
+      if (!s.shOn) { s.shOn = true; s.elS.style.display = 'block'; }
+    } else if (s.shOn) { s.shOn = false; s.elS.style.display = 'none'; }
+  }
   FX.drawn = drawn;
   for (const id of ['wizard', 'armor', 'broom']) {   // ของที่อยู่แต่ในหอคอย (crowd ของตัวเอง): ซ่อนเมื่ออยู่ไกลจากกล้อง ประหยัด draw call
     const wc = BODY.crowds[id], we = wc && wc.bodies[0];
@@ -6935,6 +7051,9 @@ Object.defineProperty(DBG, 'sky', { enumerable: true, get: () => ({ routes: SKY.
 DBG.jobsSet = (k, v) => { STORY.s[k] = v; STORY.save(); return STORY.s; };
 DBG.ring = () => { JOBS.ring(); return JOBS.T.stage; };
 DBG.guards = () => (JOBS.e.guards || []).map((e) => ({ id: e.id, x: _f2(e.x), z: _f2(e.z), yaw: _f2(e.yaw), v: _f2(e.sus.v), lvl: e.sus.lvl, seen: e.sus.seenNow, mode: e.ai.mode }));
+DBG.guardsX = () => (JOBS.e.guards || []).map((e) => { const s = e.sus; return { id: e.id, x: _f2(e.x), z: _f2(e.z), v: _f2(s.v), lvl: s.lvl, seen: s.seenNow, eng: !!s.engaged, alertT: _f2(s.alertT || 0), hunt: s.huntKey || null, atLast: !!s.atLast, shout: s.shT < 2.4 ? s.shText : null }; });
+DBG.said = () => SENSE.said.slice();
+DBG.subjKey = () => SENSE.subjKey(PLAYER.ctl || PLAYER);
 DBG.zone = () => { const z = DESV.zone; return { z: [z.x0, z.x1, z.z0, z.z1].map(_f2), inZone: !!SENSE.zoneAt(PLAYER.camBody()), threat: SENSE.c ? _f2(SENSE.c.threat) : null }; };
 // (ตรวจ) ฉากเปิดเกมมุมสายตานก: ระนาบตัดเกาะอื่น + ฉายขอบเกาะหิมะ/ทะเลทราย (และหินลอย) ลงจอดของกล้องนก ณ นาฬิกาฉาก T — นับจุดที่ "จะเห็น" ถ้าไม่ตัด · DBG.introClip(false) ปิดระนาบเพื่อดูว่าไม่ตัดแล้วเห็นจริงไหม
 DBG.introClip = (b) => { INTRO.clip(!!b); return INTRO.clipOn; };
@@ -6948,6 +7067,9 @@ DBG.introBird = (T) => {
   return { bg: INTRO.bg, cam: [pc.position.x, pc.position.y, pc.position.z].map(_f2), vis: out, clip: INTRO.clipOn };
 };
 DBG.setStory = (k, v) => { STORY.set(k, v); return STORY.s; };   // (ตรวจ) ตั้งฟิลด์เรื่อง + เซฟ เช่น ('ch', 2)
+// (ตรวจ) ทำให้ยามตื่นแบบ "เพิ่งเห็นเราที่จุด (x,z)" ทั้งที่ตัวเราอยู่ที่อื่น (จำลองเห็นแล้วหลบพ้นสายตา) · ยามคนอื่นในระยะได้ยินเสียงตะโกนด้วย
+DBG.alert = (id, x, z) => { const e = BODY.byId[id], c = SENSE.c = SENSE.ctx(); if (!e || !e.sus) return null; if (!e.sus.engaged) SENSE.engage(e, c, 'spot'); for (const o of SENSE.list) if (o.sus.engaged) { o.sus.last = { x, y: o.y, z }; o.sus.v = Math.max(o.sus.v, 0.9); o.sus.alertT = 0; } return DBG.guardsX(); };
+DBG.grace = (v) => { SENSE.grace = v; return SENSE.grace; };   // (ตรวจ) พักไม่ให้ถูกจับ v วินาที (ทดสอบฉากไล่โดยไม่ถูกจับกลางทาง)
 
 })();</script>
 </body>
