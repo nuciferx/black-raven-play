@@ -549,6 +549,7 @@ WORLD.build = (seed) => {
     if (d.id === 'home') {
       // เมืองอยู่บนวงแบนตรงกลาง (r 38 ความสูง 0 พอดี) · เนินสำหรับก้อนหินอยู่นอกเมือง คนละทิศ
       isl.flats.push({ x, z, r: 38, blend: 12, h: 0, kind: 'town' });
+      isl.flats.push({ x: x + HUT.x, z: z + HUT.z, r: 6.2, blend: 4, h: 0, kind: 'hut', soft: true });   // ลานเรียบรอบบ้านฟินน์ (soft = ไม่ตัดต้นไม้ก่อนสุ่ม เพื่อไม่ให้ลำดับสุ่มเลื่อน — props กรองทีหลัง)
       const ang = rng() * Math.PI * 2, hx = Math.cos(ang), hz = Math.sin(ang);
       isl.hills.push({ x: x + hx * 57, z: z + hz * 57, r: 14, h: 7 });
       rng();
@@ -857,7 +858,7 @@ PROPS.build = (scene) => {
         const x = isl.x + Math.cos(th) * rr, z = isl.z + Math.sin(th) * rr;
         if (rad - rr < spec.margin) continue;
         if (spec.cluster && U.fbm2(x * 0.045 + isl.ox, z * 0.045 + isl.oz, WORLD.seed + isl.sd + 50 + si, 2) < spec.cluster) continue;
-        if (isl.flats.some((f) => Math.hypot(x - f.x, z - f.z) < f.r + 2.5)) continue;
+        if (isl.flats.some((f) => !f.soft && Math.hypot(x - f.x, z - f.z) < f.r + 2.5)) continue;
         const s = U.lerp(spec.scale[0], spec.scale[1], rng());
         const gap = spec.gap * s * 0.5;
         if (spec.gap > 0 && !free(x, z, gap)) continue;
@@ -865,7 +866,9 @@ PROPS.build = (scene) => {
         if (y === null) continue;
         const sl = Math.hypot(WORLD.groundAt(x + 0.8, z) - y, WORLD.groundAt(x, z + 0.8) - y) / 0.8;
         if (sl > (spec.maxSlope || 0.75)) continue;
-        list.push({ x, y, z, ry: rng() * Math.PI * 2, s, sy: 0.9 + rng() * 0.2, tint: _tintOf(spec, rng), isl: isl.id });
+        const it = { x, y, z, ry: rng() * Math.PI * 2, s, sy: 0.9 + rng() * 0.2, tint: _tintOf(spec, rng), isl: isl.id };
+        if (isl.flats.some((f) => f.soft && Math.hypot(x - f.x, z - f.z) < f.r + 3.5)) continue;   // ลานบ้านฟินน์: ไม่วางของประดับ (กรองหลังสุ่มครบแล้ว ลำดับสุ่มของที่เหลือไม่เปลี่ยน)
+        list.push(it);
         if (PROPS.collide[spec.kind]) COLL.addCircle(x, z, PROPS.collide[spec.kind] * s);
         if (spec.gap > 0) { const k = Math.floor(x / cell) + ',' + Math.floor(z / cell); (occ.get(k) || occ.set(k, []).get(k)).push([x, z, gap]); }
         placed++;
@@ -1020,7 +1023,7 @@ WORLD.floorAt = (x, z, y, step, tags) => {
 // 35-house.js — บ้านที่เข้าได้: สร้างจาก "แปลน" (ข้อมูล) ตัวสร้างเดียว · ห้องจริง ผนังชนได้ ช่องเปิด 4 แบบ เฟอร์นิเจอร์ หลังคาจางเมื่ออยู่ข้างใน
 // แปลน = { id, x, z (กลางห้อง), W (กว้างตามแกน x), D (ลึกตามแกน z) (ขนาดด้านใน), wallH, colors:{wall,roof,timber}, ridge,
 //   hatches:[{wall,at,w,v0,v1}] (บานระบายควันสูง · เปิดด้วยโค้ดของแปลน), doors:[{wall,at,w,h,locked}], windows:[{wall,at,w,h,sill,open}], vents:[{wall,at,w,v0,v1}] (ช่องชายคา), holes:[{wall,at,w,h}] (รูหนูที่ฐานผนัง),
-//   furniture:[{kind,x,z,rot?}], chimney:{x}, lift? (ยกพื้นสูงจากดิน), owner? ('hero' = บ้านของตัวเอก ไม่น่าสงสัย), resident? { kind, at:[x,z], yaw, tint } (คนที่อยู่ในบ้าน), exit? {x,z} (จุดที่ถูกไล่ออกมา เทียบกลางบ้าน) }   wall = 'N'|'S'|'E'|'W' · at = ตำแหน่งตามแนวผนังเทียบกลางผนัง (มองจากข้างนอก ซ้าย→ขวา = +)
+//   furniture:[{kind,x,z,rot?}], chimney:{x}, noChimney? (ไม่มีปล่องไฟ), baseColor? (สีฐานผนัง ปกติหิน), lift? (ยกพื้นสูงจากดิน), owner? ('hero' = บ้านของตัวเอก ไม่น่าสงสัย), resident? { kind, at:[x,z], yaw, tint } (คนที่อยู่ในบ้าน), exit? {x,z} (จุดที่ถูกไล่ออกมา เทียบกลางบ้าน) }   wall = 'N'|'S'|'E'|'W' · at = ตำแหน่งตามแนวผนังเทียบกลางผนัง (มองจากข้างนอก ซ้าย→ขวา = +)
 // บ้านทุกหลังแกนตรง (ไม่หมุน): กล้องไอโซเมตริกมองจากทิศ +x,+z ⇒ ผนัง S (+z) กับ E (+x) บังภายใน → ผนังสองด้านนั้นกับหลังคา/เพดาน/ปล่องอยู่ใน "ชุดที่จางได้" (fade)
 // ช่องเปิดแต่ละช่อง (op) = { id, kind:'door'|'window'|'vent'|'hole', open, a (0..1 ไล่ค่า), blocker (กล่อง SOLID ที่ปิดช่อง) }
 //   เรเวนผ่านได้: หน้าต่างที่เปิด · ช่องชายคา (เปิดเสมอ) · หนูผ่านได้: รูหนู (แท็ก small) · ประตู: คนเปิดจากข้างในได้เสมอ จากข้างนอกได้ถ้าไม่ล็อก
@@ -1047,7 +1050,7 @@ HOUSE.cut = (ua, ub, va, vb, ops, fn) => {
 HOUSE.build = (plan, scene) => {
   const T = HOUSE.T, FY = HOUSE.FY, W = plan.W, D = plan.D, WH = plan.wallH || 3.1, px = plan.x, pz = plan.z;
   const base = (WORLD.groundAt(px, pz) || 0) + (plan.lift || 0), C = plan.colors;   // lift = ยกพื้นห้องสูงจากพื้นดิน (ห้องบนหอคอย)
-  const cWall = _hc(C.wall), cTim = _hc(C.timber), cStone = _hc('#8f8a80'), cRoof = _hc(C.roof), cDark = _hc('#2a211c'), cFloor = _hc(C.floor || '#9a7a52');
+  const cWall = _hc(C.wall), cTim = _hc(C.timber), cStone = _hc(plan.baseColor || '#8f8a80'), cRoof = _hc(C.roof), cDark = _hc('#2a211c'), cFloor = _hc(C.floor || '#9a7a52');
   const tw = plan.tower, stone = !!plan.stone;   // tw = { k } = ชั้นของหอคอย · stone = ผนัง/พื้นหินก้อน (HOUSE.stoneRect)
   const h = { id: plan.id, cid: plan.cid || plan.id, flv: 1, plan, x: px, z: pz, base, W, D, WH, ops: [], slots: [], fade: 1, fadeT: 1, interior: [px - W / 2, px + W / 2, pz - D / 2, pz + D / 2], leaves: [], mats: {} };
   const shell = new GB(), fade = new GB();
@@ -1151,8 +1154,10 @@ HOUSE.build = (plan, scene) => {
   fade.gable([px, cy, pz], rw, rd, rh, cRoof);
   fade.box([px, cy - 0.05, pz - rd / 2 + 0.02], rw, 0.12, 0.1, GFX.mul(cTim, 0.9)); fade.box([px, cy - 0.05, pz + rd / 2 - 0.02], rw, 0.12, 0.1, GFX.mul(cTim, 0.9));   // ปลายจันทัน
   fade.box([px, cy + rh + 0.02, pz], rw + 0.06, 0.16, 0.34, GFX.mul(cRoof, 0.78));                                                                                     // สันหลังคา
+  if (!plan.noChimney) {   // noChimney = บ้านคนจน (กระท่อมมุงฟาง) ไม่มีปล่องไฟ
   const chx = px + (plan.chimney ? plan.chimney.x : W / 3);
   fade.box([chx, cy + rh * 0.55 + 0.9, pz - 0.0], 0.9, rh * 1.1 + 1.8, 0.9, _hc('#8a8680')); fade.box([chx, cy + rh * 1.1 + 1.85, pz], 1.1, 0.16, 1.1, _hc('#5a5650'));
+  }
   SOLID.addSurf(px - rw / 2, px + rw / 2, pz - rd / 2, pz + rd / 2, (x, z) => cy + rh * (1 - Math.abs(z - pz) / (rd / 2)), { house: h.id, role: 'roof' });
   h.roofTop = cy + rh;
   }
@@ -1360,13 +1365,13 @@ INTERACT.reach = (o, m) => {
 };
 INTERACT.update = (dt) => {
   const B = INTERACT.who(), tags = B.kind.tags; let best = null, bd = 1e9;
-  if (!PLAYER.rs && !FORM.busy() && !WIZ.lock) for (const o of INTERACT.list) {
+  if (!PLAYER.rs && !FORM.busy() && !WIZ.lock && !TALK.on) for (const o of INTERACT.list) {
     if (!o.tags.some((t) => tags.indexOf(t) >= 0) || (o.can && !o.can())) continue;
     if (o.inHouse && (HOUSE.insideAt(B.x, B.y, B.z) || {}).id !== o.inHouse) continue;   // จุดด้านในต้องอยู่ในห้องจริง (ไม่ใช่อยู่นอกผนัง)
     const d = INTERACT.reach(o, B); if (d >= 0 && d < bd) { bd = d; best = o; }
   }
   const old = INTERACT.near;
-  if (old && old !== best && best === null && !WIZ.lock && INTERACT.reach(old, B) >= 0 && (!old.can || old.can()) && old.tags.some((t) => tags.indexOf(t) >= 0) && INTERACT.reach(old, B) < old.r * 1.15) best = old;   // กันป้ายกะพริบที่ขอบระยะ
+  if (old && old !== best && best === null && !WIZ.lock && !TALK.on && INTERACT.reach(old, B) >= 0 && (!old.can || old.can()) && old.tags.some((t) => tags.indexOf(t) >= 0) && INTERACT.reach(old, B) < old.r * 1.15) best = old;   // กันป้ายกะพริบที่ขอบระยะ
   if (old && old !== best) old.prog = 0;   // เดินออกจากจุดที่กำลังกดค้าง = เริ่มนับใหม่
   INTERACT.near = best;
   if (best && best.hold) {   // จุดที่ต้องกดค้าง: ไม่ใช้การกดครั้งเดียว
@@ -1468,7 +1473,7 @@ BAKERY.plan = () => ({
 
 // ---- สร้างส่วนเพิ่มของร้าน (เรียกจาก HOUSE.build หลังเฟอร์นิเจอร์) ----
 BAKERY.build = (h, c) => {
-  const { shell, fade, vis, solid, base, FY, T, W, D, WH, px, pz, scene } = c, C = h.plan.colors, cWall = GFX.rgb(C.wall), cTim = GFX.rgb(C.timber), cStone = GFX.rgb('#8f8a80'), cFloor = GFX.rgb(C.floor);
+  const { shell, fade, vis, solid, wbox, base, FY, T, W, D, WH, px, pz, scene } = c, C = h.plan.colors, cWall = GFX.rgb(C.wall), cTim = GFX.rgb(C.timber), cStone = GFX.rgb('#8f8a80'), cFloor = GFX.rgb(C.floor);
   BAKERY.h = h; const TH = 0.24, DH = 2.2;
   // ผนังกั้น: ท่อนล่าง (เตี้ย) อยู่ในชุดเปิดเห็นเสมอ · ท่อนบนอยู่ในชุดที่จางเมื่อเราอยู่ข้างใน (เห็นทะลุทุกห้อง) · แต่ชนและกันสายตาเต็มความสูง
   const seg = (x0, x1, z0, z1) => {
@@ -1493,6 +1498,17 @@ BAKERY.build = (h, c) => {
   }
   // พื้นห้องแป้งมืดลง (เห็นว่าเป็นมุมมืด) · ไม่มีการชนเพิ่ม
   vis(shell, [px + 0.15, px + W / 2, base + FY + 0.012, base + FY + 0.022, pz - D / 2, pz - 0.15], GFX.mul(cFloor, 0.72)); vis(shell, [px + 2.8, px + W / 2, base + FY + 0.024, base + FY + 0.034, pz - D / 2, pz - 3.4], GFX.mul(cFloor, 0.5));
+  // หน้าร้าน (ผนัง S, ชุดที่จางได้): บานไม้พับลงเป็นเคาน์เตอร์ใต้หน้าต่าง (มีขนมปังวาง) + ป้ายรูปขนมปังแขวนข้างประตู
+  { const wd = GFX.rgb('#7a5430'), bd = GFX.rgb('#c98a3c'), bd2 = GFX.rgb('#a8643a');
+    const bo = wbox('S', -4.35, -2.45, 0.96, 1.03, 0.0, 0.5); vis(fade, bo, GFX.mul(wd, 1.12));   // แผ่นเคาน์เตอร์ยื่นออกนอก 0.5
+    for (const u of [-4.25, -2.55]) { vis(fade, wbox('S', u - 0.05, u + 0.05, 0.55, 0.96, 0.0, 0.09), wd); vis(fade, wbox('S', u - 0.02, u + 0.02, 0.96, 1.5, 0.0, 0.5), GFX.mul(wd, 0.7)); }   // ไม้ค้ำใต้แผ่น + โซ่ยึดบานขึ้นไปที่ผนัง
+    [[-3.9, bd], [-3.4, bd2], [-2.9, bd]].forEach(([u, cc], i) => { const q = wbox('S', u, u, 1.12, 1.12, 0.25, 0.25); fade.ball([q[0], q[2], q[4]], 0.17, 0, cc, { sy: 0.6, jit: 0.1, seed: 80 + i }); });
+    vis(fade, wbox('S', 1.35, 1.45, 2.8, 2.9, 0.0, 0.95), wd);   // แขนยื่นรับป้าย
+    vis(fade, wbox('S', 1.0, 2.0, 2.86, 2.94, 0.9, 0.98), wd);   // คานขวางรับเชือกแขวน
+    vis(fade, wbox('S', 1.0, 2.0, 2.15, 2.62, 0.9, 0.97), GFX.mul(wd, 0.85)); vis(fade, wbox('S', 1.03, 1.97, 2.18, 2.59, 0.97, 1.0), GFX.rgb('#e6d3a8'));   // แผ่นป้าย + หน้าป้ายสีครีม
+    for (const u of [1.1, 1.9]) vis(fade, wbox('S', u - 0.015, u + 0.015, 2.62, 2.9, 0.92, 0.95), GFX.rgb('#d8c9a0'));   // เชือกแขวนป้าย
+    const sg = wbox('S', 1.5, 1.5, 2.38, 2.38, 1.03, 1.03); fade.ball([sg[0], sg[2], sg[4]], 0.2, 0, bd, { sy: 0.55, jit: 0.06, seed: 90 }); fade.ball([sg[0] - 0.22, sg[2] - 0.02, sg[4]], 0.13, 0, bd2, { sy: 0.6, seed: 91 }); fade.ball([sg[0] + 0.22, sg[2] - 0.02, sg[4]], 0.13, 0, bd2, { sy: 0.6, seed: 92 });   // รูปขนมปัง 3 ก้อน
+  }
   BAKERY.buildHatch(h, c);
 };
 
@@ -1571,18 +1587,86 @@ BAKERY.drawGlow = (t) => {
   for (let i = 0; i < 4; i++) { const age = (t * 0.5 + i / 4) % 1; GLOW.add(ox + Math.sin(i * 5.1 + t * 1.3) * 0.5, oy + age * 1.1, oz + Math.cos(i * 3.7 + t) * 0.15, 0.1 * (1 - age * 0.5), 6, (1 - age) * 0.8); }
 };
 
+/* ---- 37-hut.js ---- */
+// 37-hut.js — บ้านฟินน์ (id `hut`): กระท่อมห้องเดียวตามประวัติศาสตร์ · ผนังไม้สานฉาบโคลน (สีโคลนมีโครงไม้) · หลังคามุงฟาง ขอบมน หนา · ไม่มีปล่องไฟ · กองไฟกลางห้อง · เตียงฟาง หม้อ ม้านั่ง
+// ตั้งอยู่ชายเมืองด้านตะวันตก (นอกกำแพงเตี้ย) · เกมใหม่เริ่มที่นี่: ฟินน์ยืนข้างแม่มาร์ธา (นั่งข้างกองไฟ) · พิกัดในไฟล์นี้เป็น "เทียบกลางเกาะ" (x,z) หรือ "เทียบกลางห้อง" (fire/mother/start)
+// ไฟ: ไม่ใช้ PointLight (ครบ 4 ดวงแล้ว) — เปลวเป็น mesh เรืองแสงชิ้นเดียว (+1 draw call) + ประกายผ่าน GLOW · วาดเฉพาะตอนกล้องอยู่ข้างใน (หลังคาจาง)
+const HUT = { x: -40, z: 14, W: 6, D: 6.4, fire: [0.4, -0.6], mother: [-1.25, -0.6], start: [-1.3, -1.75], h: null, flame: null };
+
+HUT.plan = () => ({
+  id: 'hut', owner: 'hero', x: HUT.x, z: HUT.z, W: HUT.W, D: HUT.D, wallH: 3.0, ridge: 3.0, noChimney: true, baseColor: '#7a6448',
+  colors: { wall: '#cdb590', roof: '#b89a5e', timber: '#5a3d26', floor: '#7a5f3e', door: '#6a4a2c' },
+  doors: [{ wall: 'S', at: 0.5, w: 1.1, h: 2.0, open: true }],   // ไม่ล็อก · เริ่มเกมเปิดอยู่ (เซฟภายหลังจำสถานะเอง)
+  furniture: [{ kind: 'firepit', x: HUT.fire[0], z: HUT.fire[1] }, { kind: 'strawbed', x: -2.35, z: -2.05 }, { kind: 'pot', x: 1.65, z: -0.9 }, { kind: 'bench', x: 1.2, z: -2.8 }, { kind: 'crate', x: -2.35, z: 2.5 }, { kind: 'crate', x: 2.45, z: -2.3 }],
+  resident: { kind: 'mother', at: HUT.mother, yaw: Math.PI / 2, tint: { shirt: '#8c8372', pants: '#756c5c', skin: '#efcfaa' } },
+  build: (h, c) => HUT.build(h, c),
+});
+
+// ---- เฟอร์นิเจอร์ของกระท่อม (ตัวสร้างบ้านเดิม HOUSE.furn) ----
+{
+  const stone = GFX.rgb('#8a857c'), ash = GFX.rgb('#2e2824'), wood = GFX.rgb('#6a4626'), iron = GFX.rgb('#34302c'), straw = GFX.rgb('#c9ad62');
+  HOUSE.furn.firepit = { w: 1.5, d: 1.5, h: 0.6, draw(g, x, y, z) {   // วงหินล้อมกองไฟ (เปลวเรืองแสงเป็นอีกชิ้น — HUT.build)
+    g.limb([x, y + 0.02, z], [x, y + 0.1, z], 0.62, 0.6, 10, ash);
+    for (let i = 0; i < 9; i++) { const a = i / 9 * Math.PI * 2; g.ball([x + Math.cos(a) * 0.66, y + 0.17, z + Math.sin(a) * 0.66], 0.2, 0, GFX.mul(stone, 0.85 + 0.3 * U.hash2(i, 3, 8)), { jit: 0.2, sy: 0.8, seed: 11 + i }); }
+    for (let i = 0; i < 4; i++) { const a = i * 1.57 + 0.5; g.limb([x + Math.cos(a) * 0.45, y + 0.2, z + Math.sin(a) * 0.45], [x - Math.cos(a) * 0.2, y + 0.32, z - Math.sin(a) * 0.2], 0.08, 0.07, 5, wood, GFX.rgb('#c9a46a')); }
+    g.ball([x, y + 0.12, z], 0.3, 0, GFX.rgb('#c8461e'), { sy: 0.5, jit: 0.1, seed: 4 });   // ถ่านแดง
+  } };
+  HOUSE.furn.strawbed = { w: 1.1, d: 2.1, h: 0.5, draw(g, x, y, z, w, d) {   // เตียงฟาง: กรอบไม้เตี้ย + ฟางกอง + ผ้าห่มเก่า
+    g.box([x, y + 0.12, z], w, 0.24, d, wood); g.box([x, y + 0.34, z], w - 0.12, 0.22, d - 0.12, straw);
+    for (let i = 0; i < 6; i++) g.ball([x + (U.hash2(i, 5, 2) - 0.5) * w * 0.7, y + 0.46, z + (i / 5 - 0.5) * d * 0.8], 0.19, 0, GFX.mul(straw, 0.88 + 0.2 * U.hash2(i, 9, 3)), { sy: 0.5, jit: 0.2, seed: 20 + i });
+    g.box([x, y + 0.5, z + d * 0.14], w - 0.22, 0.07, d * 0.5, GFX.rgb('#8b7a62'));
+  } };
+  HOUSE.furn.pot = { w: 0.7, d: 0.7, h: 0.7, draw(g, x, y, z) {   // หม้อเหล็กใบเล็ก
+    g.ball([x, y + 0.36, z], 0.33, 1, iron, { sy: 0.85, jit: 0.03, cv: 0.05, seed: 5 }); g.limb([x, y + 0.6, z], [x, y + 0.67, z], 0.25, 0.27, 8, GFX.mul(iron, 1.4));
+    for (const a of [0, 2.1, 4.2]) g.box([x + Math.cos(a) * 0.22, y + 0.05, z + Math.sin(a) * 0.22], 0.08, 0.12, 0.08, iron);
+  } };
+}
+
+// ---- ส่วนเพิ่มของกระท่อม (เรียกจาก HOUSE.build) ----
+HUT.build = (h, c) => {
+  const { fade, shell, vis, wbox, base, FY, T, W, D, WH, px, pz, scene } = c, plan = h.plan, S = GFX.rgb(plan.colors.roof), mud = GFX.rgb(plan.colors.wall), dkMud = GFX.mul(mud, 0.72);
+  HUT.h = h;
+  // หลังคามุงฟาง: ชายคากลมหนา 2 ด้าน + ขอบจั่ว 4 เส้น + สันกลม + กระจุกฟางบนสัน + ร่องฟางบนลาด
+  const cy = base + WH + 0.1, rh = plan.ridge, rw = W + 2 * T + 0.9, rd = D + 2 * T + 1.0, dk = GFX.mul(S, 0.8), md = GFX.mul(S, 0.95), x0 = px - rw / 2 - 0.05, x1 = px + rw / 2 + 0.05;
+  for (const sz of [-1, 1]) fade.limb([x0, cy + 0.03, pz + sz * rd / 2], [x1, cy + 0.03, pz + sz * rd / 2], 0.3, 0.3, 7, dk, md);
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) fade.limb([px + sx * rw / 2, cy + 0.03, pz + sz * rd / 2], [px + sx * rw / 2, cy + rh, pz], 0.24, 0.2, 6, dk, md);
+  fade.limb([x0, cy + rh + 0.02, pz], [x1, cy + rh + 0.02, pz], 0.34, 0.34, 7, GFX.mul(S, 0.86), md);
+  for (let i = 0; i < 8; i++) fade.ball([px - rw / 2 + (i + 0.5) * rw / 8, cy + rh + 0.3, pz], 0.2, 0, GFX.mul(S, 0.8 + 0.3 * U.hash2(i, 4, 6)), { sy: 0.8, jit: 0.2, seed: 40 + i });
+  for (const t of [0.25, 0.5, 0.75]) for (const sz of [-1, 1]) {
+    const zz = pz + sz * rd / 2 * (1 - t) + sz * 0.05, yy = cy + rh * t + 0.04;
+    fade.limb([x0 + 0.1, yy, zz], [x1 - 0.1, yy, zz], 0.07, 0.07, 5, GFX.mul(S, 0.72));
+  }
+  // ผนังไม้สาน: ร่องแนวนอน (เว้นช่องประตู) ทั้งด้านในและด้านนอก
+  for (const wall of ['N', 'S', 'E', 'W']) {
+    const g = wall === 'S' || wall === 'E' ? fade : shell, L = (wall === 'S' || wall === 'N' ? W + 2 * T : D) / 2, ops = h.ops.filter((o) => o.wall === wall);
+    for (const v of [0.95, 1.2, 1.9, 2.15, 2.4]) HOUSE.cut(-L + 0.15, L - 0.15, v, v + 0.06, ops, (u0, u1, v0, v1) => vis(g, wbox(wall, u0, u1, v0, v1, -T - 0.02, 0.025), dkMud));
+  }
+  // เปลวไฟ: mesh เรืองแสงชิ้นเดียว (ไม่รับแสง ค่าสีเกิน 1 ให้ post ย่อ) วางกลางกองไฟ
+  const fl = new GB();
+  fl.limb([0, 0, 0], [0, 1.0, 0], 0.34, 0, 6, [2.6, 1.0, 0.22]); fl.limb([0.14, 0, 0.08], [0.2, 0.72, 0.1], 0.2, 0, 5, [2.8, 1.5, 0.3]);
+  fl.limb([-0.12, 0, -0.1], [-0.16, 0.6, -0.06], 0.18, 0, 5, [2.4, 0.8, 0.2]); fl.limb([0, 0, 0], [0, 0.55, 0], 0.2, 0, 5, [3.0, 2.2, 0.7]);
+  const m = HUT.flame = new THREE.Mesh(fl.build(), new THREE.MeshBasicMaterial({ vertexColors: true }));
+  m.position.set(px + HUT.fire[0], base + FY + 0.14, pz + HUT.fire[1]); m.castShadow = false; scene.add(m);
+  HUT.fx = m.position.x; HUT.fy = m.position.y; HUT.fz = m.position.z;
+};
+
+// ทุกเฟรม (เรียกจาก MIND.update): เปลวไหวเบาๆ + ประกายลอยเมื่อกล้องอยู่ข้างใน
+HUT.drawGlow = (t) => {
+  const h = HUT.h, m = HUT.flame; if (!h || !m) return;
+  const s = 1 + 0.12 * Math.sin(t * 11) + 0.07 * Math.sin(t * 27.3); m.scale.set(0.9 + 0.1 * s, 0.85 + 0.35 * (s - 1) + 0.15, 0.9 + 0.1 * s); m.rotation.y = t * 0.7;
+  if (h.fade > 0.5 || h.flv < 0.5) return;
+  for (let i = 0; i < 4; i++) { const age = (t * 0.45 + i / 4) % 1; GLOW.add(HUT.fx + Math.sin(i * 5.1 + t * 1.3) * 0.35, HUT.fy + 0.6 + age * 1.5, HUT.fz + Math.cos(i * 3.7 + t) * 0.3, 0.1 * (1 - age * 0.5), 6, (1 - age) * 0.8); }
+};
+
 /* ---- 37-town.js ---- */
 // 37-town.js — เมืองยุคกลางบนเกาะเมือง (id `home`): ผังเมือง (ข้อมูล) + ตัวสร้าง · พิกัดในข้อมูลเป็น "เทียบกลางเกาะ"
 // ผัง (x ขวา/ตะวันออก +, z ใต้/ใกล้กล้อง +): ลานตลาด+บ่อน้ำที่ (0,0) · ถนนตะวันออก-ตะวันตก z=0 และ z=20 · ถนนเหนือ-ใต้ x=0 · หอคอยพ่อมด 5 ชั้นที่ (0,-27)
 //   บ้านเข้าได้ 4 หลัง (HOUSE) + บ้านทึบ 5 หลัง + แผงตลาด 4 แผง + กำแพงเตี้ยรอบเมือง (เว้นที่ถนน) · ป่าอยู่นอกวงแบน (ของประดับเดิม)
 // จุดเสียบของช่วงที่ 2: TOWN.hooks.tower (หอคอยพ่อมด 5 ชั้น: ประตู หน้าต่าง ทางเชื่อม ไฟ) · TOWN.slots (ที่วางของบนโต๊ะ/ชั้น/แผงตลาด) · HOUSE.byId[id].slots · TOWN.lamps (ไฟ)
-const TOWN = { R: 36, cx: 0, cz: 0, start: { x: -22.5, z: 17.4, yaw: 2.4 }, hooks: {}, slots: [], lamps: [], built: false };
+const TOWN = { R: 36, cx: 0, cz: 0, start: { x: HUT.x + HUT.start[0], z: HUT.z + HUT.start[1], yaw: 0 }, hooks: {}, slots: [], lamps: [], built: false };
 const TOWN_PLANS = [
-  // กระท่อมตัวเอก: ประตูไม่ล็อก (ใช้ทดสอบเดินเข้าบ้านเป็นร่างคน)
-  { id: 'hut', owner: 'hero', x: -24, z: 12, W: 5, D: 6, wallH: 3.0, ridge: 2.7, colors: { wall: '#e0d3b6', roof: '#7a5a3c', timber: '#5a3d26', floor: '#8c7048', door: '#6a4a2c' },
-    doors: [{ wall: 'S', at: 0, w: 1.1, h: 2.1 }], windows: [{ wall: 'S', at: -1.55, w: 1.1, h: 1.0, sill: 1.05 }, { wall: 'E', at: 0, w: 1.2, h: 1.0, sill: 1.05 }],
-    vents: [{ wall: 'N', at: 0, w: 1.2 }], holes: [{ wall: 'W', at: 0.6, w: 0.7 }],
-    furniture: [{ kind: 'bed', x: -1.4, z: -1.6 }, { kind: 'table', x: 0.9, z: -1.2 }, { kind: 'crate', x: 1.8, z: 2.0 }, { kind: 'bench', x: -1.6, z: 0.8, rot: 1 }] },
+  // บ้านฟินน์ (กระท่อมมุงฟาง ห้องเดียว ชายเมืองตะวันตก): แปลนอยู่ใน 37-hut.js · เกมเริ่มที่นี่
+  HUT.plan(),
   // ร้านขนมปัง: ใหญ่ 3 ส่วน (หน้าร้าน/ห้องเตาอบ/ห้องเก็บแป้ง) · แปลนอยู่ใน 37-bakery.js
   BAKERY.plan(),
   // บ้านช่างไม้: มีช่องชายคา (เรเวนเข้าได้โดยไม่ต้องใช้หนู)
@@ -1597,7 +1681,8 @@ const TOWN_PLANS = [
     furniture: [{ kind: 'hearth', x: 0, z: -3.45 }, { kind: 'bed', x: -2.6, z: -2.4 }, { kind: 'table', x: 1.4, z: -0.8 }, { kind: 'bench', x: 1.4, z: 0.2 }, { kind: 'barrel', x: 2.9, z: -3.0 }, { kind: 'shelf', x: 3.0, z: 1.2, rot: 1 }] },
 ];
 // บ้านทึบประกอบฉาก: [x, z, กว้าง, ลึก, สีผนัง, สีหลังคา]
-const TOWN_SOLID = [[-12, 13, 6, 6, '#e3d4b2', '#8f4a36'], [6.5, 13.5, 6, 7, '#d8cdb0', '#6a5a46'], [-26, -9, 5, 6, '#e6dcc2', '#9a5a3a'], [26, -8, 6, 7, '#dccfa8', '#6f7f8c'], [-14, -21, 6, 6, '#e8dcbe', '#a4552f']];
+// ตัวที่ 7 (ถ้ามี) = { jetty: ชั้นบนยื่นออกด้านหน้า/ข้าง (ตามบ้านเมืองยุคกลาง) · noChim: บ้านเล็ก/คนจนไม่มีปล่องไฟ }
+const TOWN_SOLID = [[-12, 13, 6, 6, '#e3d4b2', '#8f4a36', { jetty: 1 }], [6.5, 13.5, 6, 7, '#d8cdb0', '#6a5a46', { jetty: 1 }], [-26, -9, 5, 6, '#e6dcc2', '#9a5a3a', { noChim: 1 }], [26, -8, 6, 7, '#dccfa8', '#6f7f8c', { jetty: 1 }], [-14, -21, 6, 6, '#e8dcbe', '#a4552f', { noChim: 1 }]];
 const TOWN_STALLS = [[-5, -4.6, '#c8453d', '#f1e6d0'], [4.6, -4.6, '#3f7fb8', '#f1e6d0'], [-4.6, 5.4, '#e0a83a', '#f1e6d0'], [4.8, 5.4, '#4f9a5a', '#f1e6d0']];
 const TOWN_LAMPS = [[3.2, 3.0, 'post'], [11.4, -2.2, 'lantern']];
 
@@ -1619,7 +1704,7 @@ TOWN.build = (scene) => {
       else quad(ax + (bx - ax) * i / n, ax + (bx - ax) * (i + 1) / n, az - w / 2, az + w / 2, c);
     }
   };
-  strip(-35, 35, 0, 0, 4.2, false); strip(-30, 30, 20, 20, 4.2, false); strip(0, 0, -19.5, 22, 3.6, true);
+  strip(-35, 35, 0, 0, 4.2, false); strip(-30, 30, 20, 20, 4.2, false); strip(0, 0, -19.5, 22, 3.6, true); strip(-44, -29, 20, 20, 4.2, false);   // ทางออกประตูตะวันตกไปบ้านฟินน์
   for (const p of TOWN_PLANS) if (!p.lift) quad(p.x - 1.4, p.x + 1.4, p.z + p.D / 2 + 0.3, p.z + p.D / 2 + 3.2, GFX.mul(dirt, 0.92), 0.06);   // ทางเข้าหน้าบ้าน (ใกล้ประตู)
   const pl = col('#b0a99c');   // ลานตลาด: วงกระเบื้องหินสลับเฉด
   for (let r = 0; r < 4; r++) for (let k = 0; k < 16 + r * 6; k++) {
@@ -1649,21 +1734,30 @@ TOWN.build = (scene) => {
   });
 
   // ---- บ้านทึบ ----
-  TOWN_SOLID.forEach(([sx, sz, W, D, cw, cr], i) => {
+  TOWN_SOLID.forEach(([sx, sz, W, D, cw, cr, op], i) => {
     const x = cx + sx, z = cz + sz, WH = 3.2, T = 0.3, ow = W + 2 * T, od = D + 2 * T, cwl = col(cw);
     st.box([x, WH / 2 - 0.15, z], ow, WH + 0.3, od, GFX.mul(cwl, 0.97 + 0.06 * U.hash2(i, 2, 3)));
     st.box([x, 0.3, z], ow + 0.1, 1.0, od + 0.1, stone);
     for (const a of [-1, 1]) for (const b of [-1, 1]) st.box([x + a * ow / 2, WH / 2, z + b * od / 2], 0.22, WH + 0.1, 0.22, wood);
     st.box([x, WH - 0.12, z], ow + 0.1, 0.24, od + 0.1, wood); st.box([x, 1.65, z], ow + 0.1, 0.16, od + 0.1, wood);
     const cy = WH + 0.1, rh = 2.8; st.gable([x, cy, z], ow + 0.9, od + 1.0, rh, col(cr));
-    st.box([x, cy + rh + 0.02, z], ow + 0.96, 0.16, 0.34, GFX.mul(col(cr), 0.78)); st.box([x + W / 3, cy + rh * 0.55 + 0.8, z], 0.9, rh * 1.1 + 1.6, 0.9, col('#8a8680'));
+    st.box([x, cy + rh + 0.02, z], ow + 0.96, 0.16, 0.34, GFX.mul(col(cr), 0.78)); if (!(op && op.noChim)) st.box([x + W / 3, cy + rh * 0.55 + 0.8, z], 0.9, rh * 1.1 + 1.6, 0.9, col('#8a8680'));
+    const jo = op && op.jetty ? 0.4 : 0;   // ชั้นบนยื่น: กล่องผนังบนกว้างกว่าชั้นล่าง jo ทางตะวันออก (+x) และใต้ (+z) · คานรับใต้ชายยื่น + ไม้ค้ำ
+    if (jo) {
+      const jw = GFX.mul(cwl, 0.93);
+      st.box([x + jo / 2, 2.62, z + jo / 2], ow + jo, 1.45, od + jo, jw);
+      st.box([x + jo / 2, 1.9, z + od / 2 + jo - 0.02], ow + jo + 0.1, 0.2, 0.2, wood); st.box([x + ow / 2 + jo - 0.02, 1.9, z + jo / 2], 0.2, 0.2, od + jo + 0.1, wood);
+      st.box([x + jo / 2, WH - 0.12, z + jo / 2], ow + jo + 0.1, 0.24, od + jo + 0.1, wood);
+      for (let k = -1; k <= 1; k++) { st.box([x + k * ow * 0.32, 1.72, z + od / 2 + jo * 0.5], 0.14, 0.3, jo + 0.1, wood); st.box([x + ow / 2 + jo * 0.5, 1.72, z + k * od * 0.32], jo + 0.1, 0.3, 0.14, wood); }
+      solidBox(x - ow / 2, x + ow / 2 + jo, 2.0, WH + 0.3, z - od / 2, z + od / 2 + jo, { house: 'solid' + i });
+    }
     const dw = col('#6a4a2c'), fm = col('#4e3a28');
     st.box([x + W * 0.18, 1.05, z + od / 2 + 0.04], 1.1, 2.1, 0.12, dw);   // ประตูประกอบฉาก
-    for (const [wx, wz, face] of [[-W * 0.25, od / 2 + 0.05, 'S'], [W * 0.25 + 0.3, od / 2 + 0.05, 'S'], [ow / 2 + 0.05, 0, 'E']]) {
-      const px = x + wx, pz = z + wz, fx = face === 'S';
-      st.box([px, 1.65, pz], fx ? 1.4 : 0.14, 1.2, fx ? 0.14 : 1.4, fm);
-      glow.box([px, 1.65, pz + (fx ? 0.05 : 0)], fx ? 1.15 : 0.1, 0.95, fx ? 0.1 : 1.15, [1, 1, 1]);
-      if (!fx) glow.box([px + 0.05, 1.65, pz], 0.1, 0.95, 1.15, [1, 1, 1]);
+    for (const [wx, wz, face] of [[-W * 0.25, od / 2 + 0.05 + jo, 'S'], [W * 0.25 + 0.3, od / 2 + 0.05 + jo, 'S'], [ow / 2 + 0.05 + jo, 0, 'E']]) {
+      const px = x + wx, pz = z + wz, fx = face === 'S', wy = jo ? 2.55 : 1.65;   // บ้านชั้นยื่น: หน้าต่างอยู่บนผนังชั้นบน
+      st.box([px, wy, pz], fx ? 1.4 : 0.14, 1.2, fx ? 0.14 : 1.4, fm);
+      glow.box([px, wy, pz + (fx ? 0.05 : 0)], fx ? 1.15 : 0.1, 0.95, fx ? 0.1 : 1.15, [1, 1, 1]);
+      if (!fx) glow.box([px + 0.05, wy, pz], 0.1, 0.95, 1.15, [1, 1, 1]);
     }
     COLL.addBox(x, z, ow / 2 + 0.1, od / 2 + 0.1, 0);
     solidBox(x - ow / 2, x + ow / 2, -0.3, WH + 0.3, z - od / 2, z + od / 2, { house: 'solid' + i });
@@ -3131,6 +3225,42 @@ RIG.blobSet = (i, x, y, z, nx, ny, nz, sc) => {
 };
 RIG.blobHide = (i) => RIG.blobs.setMatrixAt(i, _gz);
 
+/* ---- 52-mother-rig.js ---- */
+// 52-mother-rig.js — RIG.kinds.mother: มาร์ธา แม่ของฟินน์ = โครงคน (person) + ผ้าคลุมหัวสีซีด + กระโปรงยาว + ผ้ากันเปื้อน · ท่านั่งข้างกองไฟ (S.sit จากชนิดร่างที่มี sit: true)
+// ชิ้นลำตัว/หัวอบสีลงในรูปเอง (ไม่ใช้ tint) · แขน/มือ/ขาใช้ tint ของ palette (shirt/skin/pants) ให้สีเท่ากับลำตัว · เป็น crowd ของตัวเอง (1 ตัวในโลก)
+const _mScarf = GFX.rgb('#cfc7b2'), _mHair = GFX.rgb('#8a8478'), _mApron = GFX.rgb('#d6cdb6'), _mBodice = GFX.rgb('#8c8372'), _mSkirt = GFX.rgb('#756c5c');
+RIG.kinds.mother = {
+  parts: RIG.kinds.person.parts.map((sp) => {
+    if (sp.id === 'torso') return { id: 'torso', pos: sp.pos, scale: sp.scale, build: (g) => {
+      g.limb([0, -0.2, 0], [0, 0.44, 0], 0.4, 0.48, 8, _mBodice);                          // อก
+      g.limb([0, -1.0, 0], [0, -0.16, 0], 0.6, 0.41, 8, _mSkirt);                          // กระโปรงยาวคลุมน่อง
+      g.limb([0, -0.31, 0], [0, -0.17, 0], 0.47, 0.47, 8, GFX.mul(_mBodice, 0.55));        // เชือกคาดเอว
+      g.limb([0, 0.4, 0], [0, 0.58, 0], 0.21, 0.18, 6, GFX.mul(_mBodice, 0.75));           // คอเสื้อ
+      g.quad([-0.28, -0.2, 0.49], [0.28, -0.2, 0.49], [0.31, -0.92, 0.64], [-0.31, -0.92, 0.64], _mApron, [0, -0.6, 0]);   // ผ้ากันเปื้อน (เอียงตามกระโปรง)
+      g.box([0, 0.17, 0.47], 0.3, 0.46, 0.05, _mApron);                                    // อกผ้ากันเปื้อน
+    } };
+    if (sp.id === 'head') return { id: 'head', pos: sp.pos, build: (g) => {
+      _pface(g);
+      g.ball([0.39, -0.02, 0], 0.09, 0, _skinC, { cv: 0 }); g.ball([-0.39, -0.02, 0], 0.09, 0, _skinC, { cv: 0 });
+      g.ball([0, 0.13, 0.03], 0.4, 1, _mHair, { jit: 0.05, sy: 0.66, cv: 0.1, seed: 24 });  // ผมหงอกที่หน้าผาก
+      g.ball([0, 0.07, -0.18], 0.47, 1, _mScarf, { jit: 0.03, cv: 0.08, seed: 31 });        // ผ้าคลุมหัว (เว้นหน้าไว้ เหมือนฮู้ดของฟินน์)
+      g.ball([0, -0.2, -0.46], 0.2, 0, _mScarf, { cv: 0.05 });                              // ปมผ้าด้านหลัง
+    } };
+    return sp;
+  }),
+  animate(r, S, dt) {
+    RIG.kinds.person.animate(r, S, dt);
+    const p = r.p, c = r.cur, k = 1 - Math.exp(-6 * dt); c.sit = (c.sit || 0) + ((S.sit ? 1 : 0) - (c.sit || 0)) * k;
+    const s = c.sit;
+    if (s < 0.01) { p.legL.position.y = p.legR.position.y = _PY.leg; return; }
+    // นั่งกับพื้นหันหน้าเข้ากองไฟ: ตัวลดลง สะโพกลดตาม ขาเหยียดไปข้างหน้า มือวางตัก หัวก้มเล็กน้อย
+    p.torso.rotation.x = 0.12 * s; p.head.rotation.x = 0.3 * s; p.torso.position.y = _PY.torso - 0.85 * s; p.head.position.y = _PY.head - 0.85 * s - 0.04 * s;
+    p.armL.position.y = p.armR.position.y = _PY.arm - 0.85 * s; p.armL.rotation.x = p.armR.rotation.x = -0.6 * s;
+    p.legL.position.y = p.legR.position.y = _PY.leg - 0.63 * s; p.legL.rotation.x = p.legR.rotation.x = -1.35 * s;
+    _hands(p);
+  },
+};
+
 /* ---- 52-wizard-rig.js ---- */
 // 52-wizard-rig.js — RIG.kinds.wizard: พ่อมด = โครงคน (person) + ชุดคลุมยาวถึงพื้น + หมวกแหลมปีกกว้าง + เคราขาว · tint 'shirt' = สีชุดคลุม
 // ใช้ท่าเคลื่อนไหวของ person ตรงๆ (ชิ้นส่วนชื่อเดียวกัน) · เป็น crowd ของตัวเอง (1 ตัวในโลก) เพราะชนิด rig ต่างจากชาวบ้าน
@@ -3274,6 +3404,8 @@ BODIES.kinds.villager = {
 BODIES.kinds.keeper = Object.assign({}, BODIES.kinds.villager, { wander: { radius: 3.0, min: 0.8, rest: [2, 5], speed: 0.5 } });
 // คนทำขนมปัง: เดินวนตามเส้นทางระหว่างหน้าร้าน/ห้องเตาอบ/ห้องเก็บแป้ง (resident.patrol ในแปลนร้าน — 37-bakery.js) หยุดแต่ละจุดครู่หนึ่ง
 BODIES.kinds.baker = Object.assign({}, BODIES.kinds.villager, { name: 'คนทำขนมปัง', ai: 'patrol', wander: null, patrol: { speed: 0.5, pause: [2.0, 5.0] } });
+// มาร์ธา (แม่ของฟินน์): นั่งข้างกองไฟในบ้านฟินน์ · ไม่มีการมองเห็น/ความสงสัย (ไม่ใช่ผู้ถูกหลอก) · บังคับจิตไม่ได้ · คุยได้ (68-talk.js) · sit = ท่านั่งของ rig
+BODIES.kinds.mother = Object.assign({}, BODIES.kinds.villager, { name: 'มาร์ธา', rig: 'mother', ai: null, wander: null, noMind: true, sit: true, sense: null });
 BODIES.kinds.wizard = Object.assign({}, BODIES.kinds.villager, { name: 'พ่อมด', rig: 'wizard', ai: null, wander: null, noMind: true,   // noMind = บังคับจิตไม่ได้เสมอ (แม้ #unlock=all)
  
   sense: Object.assign({}, BODIES.kinds.villager.sense, { range: 10, ang: 1.1, chase: false }) });
@@ -3497,7 +3629,7 @@ MIND.update = (dt) => {
     }
     if (u >= 1) { const q = (fx.t - fx.dur) / 0.28; if (q < 1) GLOW.add(to.x, to.y, to.z, 2 + 3 * q, 2, 1 - q); else MIND.fx = null; }
   }
-  FORM.draw(); SENSE.drawGlow(); WIZ.drawGlow(t); BAG.drawGlow(t); TOWER.drawGlow(t); BAKERY.drawGlow(t);
+  FORM.draw(); SENSE.drawGlow(); WIZ.drawGlow(t); BAG.drawGlow(t); TOWER.drawGlow(t); BAKERY.drawGlow(t); HUT.drawGlow(t); STORY.drawGlow(t);
   const io = INTERACT.near; if (io && !WIZ.lock) GLOW.add(io.x, io.y + 0.7 + 0.12 * Math.sin(t * 4), io.z, 1.1, 0, 0.95);
   GLOW.end();
   MIND.ui();
@@ -3920,7 +4052,7 @@ BODY.wander = (e, dt) => {
 BODY.update = (dt) => {
   for (const e of BODY.list) {
     if (e.ctrl) continue;
-    if (e.state === 'gone') { e.goneT += dt; if (e.goneT > BODY.respawnAfter) BODY.respawn(e); continue; }
+    if (e.state === 'gone') { if (e.away) continue; e.goneT += dt; if (e.goneT > BODY.respawnAfter) BODY.respawn(e); continue; }   // e.away = ไม่อยู่ในฉากตามเนื้อเรื่อง (STORY) ไม่เกิดใหม่เอง
     const K = e.kind;
     let inp = BODY.idle;
     if (e.state === 'ground' && (K.ai === 'wander' || K.sense)) inp = (K.sense && SENSE.drive(e)) || (K.ai === 'wander' ? BODY.wander(e, dt) : (K.ai === 'patrol' ? BODY.patrol(e, dt) : BODY.idle));   // ความสงสัยสั่งการเดินก่อน (61-sense.js)
@@ -3940,7 +4072,7 @@ BODY.render = (dt) => {
     if (e.state === 'gone' || e.hid) { RIG.crowdHide(cw, e.ci); RIG.blobHide(e.bi); continue; }
     const sc = K.scale * e.s;
     if (K.mode === 'walk') {
-      e.rig.def.animate(e.rig, { walk01: Math.min(1, Math.hypot(e.vx, e.vz) / (K.speed * (e.ctrl ? 1 : 0.6))), air: e.state === 'air', t }, dt);
+      e.rig.def.animate(e.rig, { walk01: Math.min(1, Math.hypot(e.vx, e.vz) / (K.speed * (e.ctrl ? 1 : 0.6))), air: e.state === 'air', t, sit: !!K.sit }, dt);
       _bq.setFromAxisAngle(_bY, e.yaw); _bp.set(e.x, e.y, e.z);
     } else {
       _bq.copy(e.q); _bp.set(e.x, e.y + BODY.radius(e) * e.gk, e.z);
@@ -4161,7 +4293,7 @@ SENSE.update = (dt) => {
   SENSE.noiseUpdate(dt, ctx);
   let st = 0, vmax = 0, sees = 0;
   for (const e of SENSE.list) {
-    SENSE.think(e, dt, ctx);
+    if (!TALK.on) SENSE.think(e, dt, ctx);   // ระหว่างคุย ความสงสัยไม่เดิน
     const s = e.sus; if (e.state === 'gone' || e.ctrl) continue;
     if (s.lvl >= 2) st = 2; else if ((s.lvl >= 1 || (s.seenNow && ctx.threat > 0)) && st < 1) st = 1;
     if (s.seenNow && ctx.threat > 0) sees++;
@@ -4264,7 +4396,7 @@ PLAYER._respawn = (dt) => {
 PLAYER.update = (dt) => {
   const P = PLAYER, K = P.kind, ctl = P.ctl, inp = P.rs && P.rs.ph === 'out' ? _IDLE : INPUT;
   INPUT.update();
-  if (WIZ.lock) { P.vx = P.vy = P.vz = 0; P.turnRate = 0; return; }   // ฉากพ่อมด: ตัวเราถูกตรึงอยู่กับที่
+  if (WIZ.lock || TALK.on) { P.vx = P.vy = P.vz = 0; P.turnRate = 0; return; }   // ฉากพ่อมด / ระหว่างคุย: ตัวเราหยุดอยู่กับที่
   P.sit = !!ctl;
   if (ctl) {
     // บังคับจิต: ขยับเป้าหมายด้วย mode ของมัน · ตัวเราอยู่นิ่ง · พลังเวทลดตามสาย
@@ -4648,11 +4780,12 @@ WIZ.drawGlow = (t) => {
 /* ---- 66-goals.js ---- */
 // 66-goals.js — GOALS: กล่องเป้าหมายบนจอ (มุมซ้ายบน ใต้แถบพลังเวท) · บอกแค่ "ต้องทำอะไร" ไม่บอกวิธี/ปุ่ม/ทางเข้า · ไม่มีลูกศรชี้ตำแหน่ง
 // ข้อมูลล้วน: GOALS.list = [{ id, text, ok: () => bool }] แก้ข้อความ/เพิ่มข้อได้โดยไม่ต้องแตะตรรกะ · ทำสำเร็จแล้วติ๊กและเลื่อนไปข้อถัดไป (ติ๊กแล้วไม่ถอยกลับ แม้ของหล่นคืนตอนถูกจับ)
-// เซฟ: SAVE.goals = [true/false ต่อข้อ] · มือถือ: ย่อเหลือบรรทัดเดียว แตะเพื่อกาง/ย่อ · ซ่อนระหว่างฉากพ่อมด/จอจบ
+// เซฟ: SAVE.goals2 = [true/false ต่อข้อ] (ชื่อใหม่ตั้งแต่เรื่องฟินน์ — ไม่อ่านเซฟ goals เก่าที่เป็นคนละรายการ) · ข้อความ/เงื่อนไขอ่านจาก STORY.s (67-story.js) · มือถือ: ย่อเหลือบรรทัดเดียว แตะเพื่อกาง/ย่อ · ซ่อนระหว่างฉากพ่อมด/จอจบ
 const GOALS = {
   list: [
-    { id: 'food', text: 'หิวเหลือเกิน — หาอะไรกินจากร้านขนมปัง', ok: () => ['bread', 'cheese', 'sausage', 'loaf', 'pie'].some((k) => BAG.has(k)) },
-    { id: 'tower', text: 'ข่าวลือว่าในหอคอยพ่อมดมีของมีค่า — เข้าไปเอามา', ok: () => BAG.has('stonekey') },
+    { id: 'food', text: 'แม่หิว — หาอะไรกินมาให้แม่', ok: () => STORY.s.gotFood },
+    { id: 'bring', text: 'เอาขนมปังกลับไปให้แม่', ok: () => STORY.s.handed },
+    { id: 'job', text: 'หางานรับจ้างในเมือง', ok: () => false },   // งานรับจ้างจริง = งานย่อย 2 (ยังไม่ทำ)
   ],
   done: [], el: null, open: false, _k: '',
 };
@@ -4669,7 +4802,7 @@ GOALS.CSS = `
 .touch #gq.c .g.cur span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:min(240px,calc(100vw - 150px))}
 `;
 GOALS.init = () => {
-  const sv = SAVE.read().goals; GOALS.done = GOALS.list.map((q, i) => !!(Array.isArray(sv) && sv[i]));
+  const sv = SAVE.read().goals2; GOALS.done = GOALS.list.map((q, i) => !!(Array.isArray(sv) && sv[i]));
   const st = document.createElement('style'); st.textContent = GOALS.CSS; document.head.appendChild(st);
   const el = GOALS.el = document.createElement('div'); el.id = 'gq'; UI.root.appendChild(el);
   el.addEventListener('pointerdown', (e) => { if (!UI.touch) return; e.preventDefault(); e.stopPropagation(); GOALS.open = !GOALS.open; GOALS.render(); });
@@ -4683,8 +4816,251 @@ GOALS.render = () => {
   GOALS.el.innerHTML = '<h6>เป้าหมาย' + (UI.touch ? (GOALS.open ? ' ▴' : ' ▾') : '') + '</h6>' + GOALS.list.map((q, i) => (i <= cur || all || GOALS.done[i] ? '<div class="g' + (GOALS.done[i] ? ' d' : '') + (i === cur ? ' cur' : '') + '"><i></i><span>' + q.text + '</span></div>' : '')).join('');
 };
 GOALS.update = () => {
-  for (let i = 0; i < GOALS.list.length; i++) if (!GOALS.done[i] && GOALS.list[i].ok()) { GOALS.done[i] = true; SAVE.write({ goals: GOALS.done.slice() }); }
+  for (let i = 0; i < GOALS.list.length; i++) if (!GOALS.done[i] && GOALS.list[i].ok()) { GOALS.done[i] = true; SAVE.write({ goals2: GOALS.done.slice() }); }
   GOALS.render();
+};
+
+/* ---- 67-story.js ---- */
+// 67-story.js — STORY: สถานะเรื่อง (ข้อมูลเดียว เซฟใน SAVE.story) · บทที่ 1 "แม่หิว" → บทที่ 2 "หางานรับจ้าง" (ADR 0003)
+// STORY.s = { ch: 1|2 (บท), opened (คุยเปิดเกมแล้ว), gotFood (เคยได้ของกินแล้ว — ติ๊กไม่ถอย), handed (ให้แม่แล้ว) } · งานย่อย 2–3 เพิ่มฟิลด์/บทต่อที่นี่
+// เซฟเก่า (ไม่มี SAVE.story): เริ่มบทที่ 1 · ของที่อยู่ในกระเป๋าแล้วนับว่า "ได้ของกินแล้ว" ทันที · ไม่ลบของผู้เล่น
+// ผูกกับ: GOALS.list (66-goals.js อ่านจาก STORY.s) · TALK (68-talk.js บทพูดเปลี่ยนตามสถานะ) · TUT (69-tutor.js บทสอนตามเหตุการณ์)
+// บทที่ 1 "ร้านไม่มีคน": คนทำขนมปังออกไปตลาด (e.away = true, state 'gone' — ทุกระบบที่ข้ามร่างที่ gone ข้ามเขาเอง) จนฟินน์ได้ของกิน แล้วกลับมาเดินตามรอบเดิม
+//   (กลับเมื่อฟินน์ไม่ได้อยู่ในร้านแล้วเท่านั้น กันเขาโผล่ใส่หน้า)
+const STORY = {
+  s: { ch: 1, opened: false, gotFood: false, handed: false }, t: 0, gave: '', e: null, legacy: false,
+  foods: ['bread', 'loaf', 'cheese', 'sausage', 'pie'],   // ของที่แม่รับได้ (ขนมปังก่อน)
+};
+STORY.init = () => {
+  const sv = SAVE.read().story;
+  if (sv && typeof sv === 'object') for (const k in STORY.s) if (sv[k] !== undefined) STORY.s[k] = sv[k];
+  STORY.legacy = !sv && !!PLAYER.loaded;
+  if (STORY.food()) STORY.s.gotFood = true;
+  MIND.seen.near = 1; MIND.seen.rel = 1;   // บทสอน (69-tutor.js) ทำหน้าที่แทนคำใบ้เดิมของการบังคับจิต/ปล่อย
+};
+STORY.save = () => SAVE.write({ story: Object.assign({}, STORY.s) });
+STORY.set = (k, v) => { if (v === undefined) v = true; if (STORY.s[k] !== v) { STORY.s[k] = v; STORY.save(); } };
+
+// ของกินในกระเป๋า (ชนิดแรกตามลำดับ) หรือ null
+STORY.food = () => { for (const k of STORY.foods) if (BAG.has(k)) return k; return null; };
+STORY.foodName = () => STORY.gave || (BAG.kinds[STORY.food()] || {}).name || 'ของกิน';
+// ให้ของกินแม่: ของออกจากกระเป๋า (ไม่หล่นคืนในโลก) · เข้าบทที่ 2
+STORY.handIn = () => {
+  const k = STORY.food(); if (!k || STORY.s.handed) return false;
+  STORY.gave = BAG.kinds[k].name; BAG.consume(k);
+  STORY.s.handed = true; STORY.s.gotFood = true; STORY.s.ch = 2; STORY.save();
+  UI.toast('ให้' + STORY.gave + 'แม่แล้ว', 2600);
+  return true;
+};
+
+STORY.baker = () => STORY.e || (STORY.e = BODY.list.find((e) => e.house === 'baker') || null);
+// ฟินน์ (ตัวเรา หรือเป้าหมายที่คุมอยู่) อยู่ในร้านขนมปังไหม
+STORY.inShop = () => [PLAYER, PLAYER.ctl].some((m) => { const h = m && HOUSE.insideAt(m.x, m.y + 0.3, m.z); return !!h && h.id === 'baker'; });
+STORY.mother = () => STORY.m || (STORY.m = BODY.list.find((e) => e.kindId === 'mother') || null);
+
+STORY.update = (dt) => {
+  const s = STORY.s; STORY.t += dt;
+  if (!s.gotFood && STORY.food()) STORY.set('gotFood');
+  const b = STORY.baker();
+  if (b) {   // บทที่ 1: ร้านไม่มีคน จนกว่าจะได้ของกิน
+    const away = s.ch === 1 && !s.gotFood;
+    if (away && !b.away) { b.away = true; b.state = 'gone'; b.goneT = 0; b.vx = b.vz = 0; }
+    else if (!away && b.away && !STORY.inShop()) { b.away = false; BODY.respawn(b); }
+  }
+  // เกมใหม่: คุยเปิดเรื่องกับแม่เองหลังเริ่ม ~1 วินาที (ถ้ายืนอยู่ข้างแม่ในร่างคน)
+  const m = STORY.mother();
+  if (!s.opened && m && !TALK.on && !WIZ.lock && STORY.t > 1.2 && PLAYER.form === 'human' && !PLAYER.ctl && PLAYER.state === 'ground' && Math.hypot(PLAYER.x - m.x, PLAYER.z - m.z) < 3.2) TALK.start('mother');
+};
+
+// ประกายเวทวนรอบหนูที่อยู่ใกล้ (ก่อนฟินน์เคยบังคับจิตครั้งแรก) — "หนูเรืองแสง" · เรียกจาก MIND.update (ผ่าน GLOW ไม่เพิ่ม draw call)
+STORY.drawGlow = (t) => {
+  if (WIZ.lock || TUT.done('mind') || PLAYER.ctl) return;
+  const B = PLAYER.camBody();
+  for (const e of BODY.list) {
+    if (e.kindId !== 'mouse' || e.state === 'gone' || e.hid || Math.hypot(e.x - B.x, e.z - B.z) > 14) continue;
+    const he = HOUSE.insideAt(e.x, e.y + 0.3, e.z), hp = HOUSE.insideAt(B.x, B.y + 0.3, B.z); if (he && he !== hp) continue;
+    for (let i = 0; i < 3; i++) { const a = t * 1.6 + i * 2.094, r = 0.42 + 0.08 * Math.sin(t * 3 + i); GLOW.add(e.x + Math.cos(a) * r, e.y + 0.28 + 0.12 * Math.sin(t * 4 + i * 2), e.z + Math.sin(a) * r, 0.16, 6, 0.95); }
+  }
+};
+
+/* ---- 68-talk.js ---- */
+// 68-talk.js — TALK: คุยกับคน · ร่างคน (แท็ก `talks`) เข้าใกล้คนที่คุยได้ → ป้าย "F · คุย" → กล่องบทพูด (ชื่อผู้พูด + ข้อความ พิมพ์ทีละตัว)
+// ต่อบรรทัด: คลิก/แตะที่ไหนก็ได้ · Space / Enter / F · ถ้ายังพิมพ์ไม่จบ = พิมพ์ให้จบก่อน · ข้ามทั้งบท: Esc (ทำ action ของบรรทัดที่เหลือให้ครบ)
+// ระหว่างคุย: ตัวเราหยุด (PLAYER.update) · ความสงสัยไม่เดิน (SENSE.update) · ป้ายใช้ปิด (INTERACT.update) — ทุกจุดอ่าน TALK.on
+// ข้อมูล: TALK.data[id] = [[ผู้พูด 'm'|'f', ข้อความ (สตริงหรือฟังก์ชันคืนสตริง), action?]] · TALK.pick[คนที่คุย]() คืน id บทพูดตามสถานะเรื่อง (STORY.s) · TALK.acts[action] ทำเมื่อบรรทัดนั้นขึ้น
+// คนใหม่ที่คุยได้ = เพิ่ม TALK.people[id] = { kind: ชนิดร่างของคนนั้น, name, pick } + บทใน TALK.data (ไม่ต้องแตะตรรกะ)
+const TALK = { on: false, id: null, key: null, lines: [], i: 0, chars: 0, cps: 42, el: null, byKey: {}, ran: -1 };
+TALK.names = { m: 'มาร์ธา', f: 'ฟินน์' };
+TALK.cols = { m: '#ffd9a8', f: '#a8d4ff' };
+const _tkN = () => STORY.foodName();
+TALK.data = {
+  'm.open': [
+    ['m', 'ฟินน์… มานั่งผิงไฟใกล้ๆ แม่หน่อยสิลูก ข้างนอกยังเย็นอยู่นะ'],
+    ['f', 'ครับแม่'],
+    ['m', 'ที่นี่อุ่นดี แต่แม่เหนื่อยเหลือเกิน ในหม้อก็ไม่มีอะไรเหลือแล้ว ไม่มีอะไรตกถึงท้องมาสองวันแล้วนะลูก'],
+    ['f', 'ผมรู้ครับ'],
+    ['m', 'แม่ไม่ได้ว่าอะไรหรอก แค่ท้องมันว่างจนไม่มีแรงลุกเท่านั้นเอง'],
+    ['m', 'ระวังตัวด้วยนะลูก อย่าไปมีเรื่องกับใครเขา'],
+    ['f', 'แม่รออยู่ที่นี่นะ เดี๋ยวผมไปหาอะไรมาให้', 'opened'],
+  ],
+  'm.wait': [
+    ['m', 'ไปเถอะลูก ในเมืองน่าจะมีอะไรให้กินบ้าง แม่รออยู่ตรงนี้ ระวังตัวด้วยนะ'],
+    ['f', 'ครับแม่'],
+  ],
+  'm.give': [   // ให้ของกิน → บทที่ 2 (ของออกจากกระเป๋าตอนบรรทัดแรกขึ้น)
+    ['f', () => 'แม่ครับ ผมเอา' + _tkN() + 'มาให้ ยังอุ่นๆ อยู่เลย', 'give'],
+    ['m', () => 'นี่… ' + _tkN() + 'เอามาจากไหนกันลูก ช่างเถอะ แม่ไม่ถามหรอก ขอบใจนะ'],
+    ['f', 'แม่กินเถอะครับ'],
+    ['m', 'แต่ของกินแค่นี้อยู่ได้ไม่กี่วัน บ้านเราก็ไม่มีรายได้เลย เงินเก็บก็หมดแล้ว'],
+    ['m', 'ฟินน์ ลองไปหางานรับจ้างในเมืองดูนะลูก ใครจ้างอะไรก็ถามไว้ แม่จะรออยู่ที่บ้าน'],
+    ['f', 'ครับ ผมจะไปดู'],
+  ],
+  'm.ch2': [
+    ['m', 'ไปหางานรับจ้างในเมืองดูนะลูก ใครจ้างอะไรก็ถามไว้ แม่รออยู่ที่นี่'],
+    ['f', 'ครับแม่'],
+  ],
+};
+TALK.acts = { opened: () => STORY.set('opened'), give: () => STORY.handIn() };
+TALK.people = {
+  mother: { kind: 'mother', name: 'มาร์ธา', house: 'hut', pick: () => (!STORY.s.opened ? 'm.open' : STORY.s.ch >= 2 ? 'm.ch2' : STORY.food() && !STORY.s.handed ? 'm.give' : 'm.wait') },
+};
+
+TALK.CSS = `
+#tk{position:fixed;left:0;top:0;right:0;bottom:0;display:none;pointer-events:auto;z-index:7;font-family:system-ui,"Leelawadee UI",Tahoma,sans-serif;touch-action:none}
+#tk.on{display:block}
+#tkb{position:absolute;left:50%;bottom:calc(26px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);width:min(640px,92vw);box-sizing:border-box;padding:12px 18px 10px;border-radius:14px;background:rgba(30,20,12,.88);border:2px solid #d8b27a;color:#fff}
+#tkb .tn{font-weight:700;font-size:14px;margin-bottom:4px}
+#tkb .tt{font-size:17px;line-height:1.5;min-height:3em}
+#tkb .th{margin-top:6px;font-size:12px;opacity:.7;text-align:right}
+`;
+TALK.init = () => {
+  const st = document.createElement('style'); st.textContent = TALK.CSS; document.head.appendChild(st);
+  const z = document.createElement('div'); z.id = 'tk'; z.innerHTML = '<div id="tkb"><div class="tn"></div><div class="tt"></div><div class="th"></div></div>'; document.body.appendChild(z);
+  TALK.el = { root: z, name: z.querySelector('.tn'), txt: z.querySelector('.tt'), hint: z.querySelector('.th') };
+  z.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); TALK.advance(); });
+  window.addEventListener('keydown', (e) => {
+    if (!TALK.on) return;
+    if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); if (!e.repeat) TALK.advance(); }
+    else if (e.code === 'Escape') TALK.end(true);
+  });
+  for (const key in TALK.people) {   // ลงทะเบียนจุดคุยของแต่ละคน (คนนิ่ง: ตำแหน่งตอนเริ่มโลก · ถ้าคนเดินได้ ต้องอัปเดต o.x/o.z เอง)
+    const P = TALK.people[key], e = BODY.list.find((b) => b.kindId === P.kind); if (!e) continue;
+    P.body = e; TALK.byKey[key] = P;
+    INTERACT.add({ id: 'talk.' + key, x: e.x, y: e.y + 0.4, z: e.z, r: 2.4, dy: 1.6, tags: ['talks'], inHouse: P.house, hint: true, can: () => !TALK.on && !WIZ.lock && e.state !== 'gone',
+      text: () => 'คุยกับ' + P.name, run: () => TALK.start(key) });
+  }
+};
+TALK.text = (L) => (typeof L[1] === 'function' ? L[1]() : L[1]);
+TALK.start = (key) => {
+  const P = TALK.byKey[key]; if (!P || TALK.on || WIZ.lock) return false;
+  const id = P.pick(); if (!id || !TALK.data[id]) return false;
+  TALK.on = true; TALK.key = key; TALK.id = id; TALK.lines = TALK.data[id]; TALK.i = 0; TALK.ran = -1;
+  const B = PLAYER, e = P.body; B.vx = B.vy = B.vz = 0; B.yaw = Math.atan2(e.x - B.x, e.z - B.z);
+  if (BAG.open) BAG.toggle(false);
+  TALK.el.root.classList.add('on'); TALK.show(); return true;
+};
+TALK.show = () => {
+  const L = TALK.lines[TALK.i], E = TALK.el; TALK.chars = 0;
+  if (TALK.ran < TALK.i) { TALK.ran = TALK.i; if (L[2]) TALK.acts[L[2]](); }   // action ทำตอนบรรทัดขึ้น (ก่อนอ่านข้อความ เพื่อให้ข้อความอ้างผลได้)
+  E.name.textContent = TALK.names[L[0]]; E.name.style.color = TALK.cols[L[0]];
+  E.hint.textContent = (TALK.i + 1) + '/' + TALK.lines.length + ' · ' + (UI.touch ? 'แตะ = ต่อ' : 'คลิก / Space / F = ต่อ · Esc = ข้าม');
+  E.txt.textContent = '';
+};
+TALK.advance = () => {
+  if (!TALK.on) return;
+  const t = TALK.text(TALK.lines[TALK.i]);
+  if (TALK.chars < t.length) { TALK.chars = t.length; TALK.el.txt.textContent = t; return; }
+  if (TALK.i + 1 >= TALK.lines.length) { TALK.end(false); return; }
+  TALK.i++; TALK.show();
+};
+TALK.end = (skip) => {
+  if (!TALK.on) return;
+  if (skip) for (let i = TALK.ran + 1; i < TALK.lines.length; i++) { const a = TALK.lines[i][2]; if (a) TALK.acts[a](); }   // ข้ามบท: action ที่เหลือยังต้องทำครบ
+  TALK.on = false; TALK.el.root.classList.remove('on'); INPUT.pressed.use = false;
+};
+TALK.update = (dt) => {
+  if (!TALK.on) return;
+  if (INPUT.take('use')) { TALK.advance(); if (!TALK.on) return; }
+  const t = TALK.text(TALK.lines[TALK.i]); TALK.chars = Math.min(t.length, TALK.chars + TALK.cps * dt);
+  TALK.el.txt.textContent = t.slice(0, Math.floor(TALK.chars));
+};
+
+/* ---- 69-tutor.js ---- */
+// 69-tutor.js — TUT: บทสอนสกิลทีละอย่าง ขึ้นกลางล่างของจอ "ตามจังหวะที่ใช้จริง" (ไม่สอนทีเดียวตอนเริ่ม) · ครั้งเดียวต่ออย่าง (เซฟ SAVE.taught) · หายเองเมื่อทำสำเร็จ หรือหมดเวลา
+// ข้อมูลล้วน: TUT.list = [{ id, when: () => bool (เงื่อนไขเกิดเหตุ), lines: [['tip' | 'thought', ข้อความหรือฟังก์ชันคืนข้อความ]], ok: () => bool (ทำสำเร็จแล้วหาย), min?, max? }]
+//   tip = คำสอนปุ่ม (คอม + มือถือในข้อความเดียว) · thought = ฟินน์คิดในใจ (ตัวเอียง) · เรียงตามลำดับความสำคัญ: ตัวบนสุดที่เข้าเงื่อนไขขึ้นก่อน ตัวอื่นรอคิว
+// หลักการ: บอกปุ่มกับเหตุผล ไม่บอกคำตอบของปริศนา · ระหว่างคุย/ฉากพ่อมด: ซ่อน (นาฬิกานับถอยหยุด)
+const TUT = { cur: null, t: 0, taught: {}, el: null, ran: false, wasHut: false, _k: '' };
+TUT.done = (id) => !!TUT.taught[id];
+TUT.mark = (id) => { if (!TUT.taught[id]) { TUT.taught[id] = 1; SAVE.write({ taught: TUT.taught }); } };
+const _tuTouch = (a, b) => (UI.touch ? b : a);
+TUT.inHut = () => { const B = PLAYER.camBody(), h = HOUSE.insideAt(B.x, B.y + 0.3, B.z); return !!h && h.id === 'hut'; };
+TUT.nearBakery = (r) => { const h = BAKERY.h; return !!h && Math.hypot(PLAYER.camBody().x - h.x, PLAYER.camBody().z - (h.z + h.D / 2)) < r; };
+
+TUT.list = [
+  { id: 'walk', when: () => TUT.wasHut && !TUT.inHut() && PLAYER.form === 'human' && !PLAYER.ctl,   // ออกจากบ้านครั้งแรก
+    lines: [['tip', () => _tuTouch('เดิน: WASD หรือลูกศร · วิ่ง: ค้าง Shift · กระโดด: Space', 'เดิน: ลากนิ้วที่ครึ่งซ้ายของจอ · วิ่ง: ค้างปุ่ม ⤓ · กระโดด: ปุ่ม ⤒')]],
+    ok: () => TUT.ran, min: 3, max: 16 },
+  { id: 'bakery', when: () => STORY.s.ch === 1 && !STORY.s.gotFood && !BAKERY.S.cut && !PLAYER.ctl && PLAYER.form === 'human' && TUT.nearBakery(7) && !STORY.inShop(),   // เข้าใกล้ร้านขนมปังครั้งแรก
+    lines: [['thought', 'ร้านปิด คนทำขนมปังก็ไม่อยู่… ช่องระบายควันสูงๆ บนผนังนั่น เข้าไปได้ แต่ข้าขึ้นไปไม่ถึง']], ok: () => false, min: 6, max: 8 },
+  { id: 'mouse', when: () => !PLAYER.ctl && !TUT.done('mind') && TUT.mouseNear(8),   // เห็นหนูเรืองแสงใกล้ๆ
+    lines: [['thought', 'ข้าคุยกับสัตว์ได้มาตั้งแต่เด็ก… ไม่เคยบอกใคร'], ['tip', () => 'บังคับจิต: เข้าใกล้สิ่งที่เรืองแสงแล้วกด E (มือถือ: ปุ่ม "บังคับ")']],
+    ok: () => !!PLAYER.ctl, min: 4, max: 18 },
+  { id: 'mind', when: () => !!PLAYER.ctl,   // คุมหนูครั้งแรก
+    lines: [['tip', () => 'ตอนบังคับจิต ตัวเรานั่งนิ่งอยู่ที่เดิม ถ้ามีคนเห็นก็หลบไม่ทัน · กด Q (มือถือ: ปุ่ม ↺) เพื่อปล่อยกลับมาที่ตัวเรา']],
+    ok: () => !PLAYER.ctl, min: 5, max: 16 },
+  { id: 'rope', when: () => !!PLAYER.ctl && PLAYER.ctl.kindId === 'mouse' && !BAKERY.S.cut && BAKERY.hook && Math.hypot(PLAYER.ctl.x - BAKERY.hook.x, PLAYER.ctl.z - BAKERY.hook.z) < 3.2 && STORY.inShop(),   // ใกล้ตะขอเชือกในร้าน
+    lines: [['tip', () => 'เชือกนี้รั้งบานระบายควันไว้ — ฟันหนูกัดขาดได้ · ' + _tuTouch('กด F ค้างไว้', 'แตะปุ่มมือค้างไว้') + ' จนเชือกขาด']],
+    ok: () => BAKERY.S.cut || !PLAYER.ctl, min: 3, max: 22 },
+  { id: 'form', when: () => !!BAKERY.ho && BAKERY.ho.open && STORY.s.ch === 1 && !STORY.s.gotFood && PLAYER.form === 'human' && TUT.nearBakery(14),   // บานเปิดแล้ว
+    lines: [['tip', () => 'บานเปิดแล้ว — ' + _tuTouch('กด R', 'กดปุ่มแปลงร่าง') + ' แปลงเป็นเรเวนแล้วบินเข้าทางช่องนั้น (ถ้ายังบังคับจิตอยู่ ปล่อยก่อน: ' + _tuTouch('Q', '↺') + ')']],
+    ok: () => PLAYER.form === 'raven', min: 4, max: 25 },
+  { id: 'fly', when: () => PLAYER.form === 'raven' && !PLAYER.ctl,   // เป็นเรเวนครั้งแรก
+    lines: [['tip', () => _tuTouch('Space = กระพือบินขึ้น · Shift = ร่อนลง', 'ปุ่ม ⤒ = กระพือบินขึ้น · ปุ่ม ⤓ = ร่อนลง') + ' · บินเปลืองพลังเวท (แถบบนจอ) ลงยืนบนพื้นเพื่อฟื้น']],
+    ok: () => PLAYER.state === 'fly' && TUT.t > 6, min: 6, max: 14 },
+  { id: 'bag', when: () => STORY.s.gotFood && !STORY.s.handed && !!STORY.food(),   // ได้ของกินแล้ว
+    lines: [['tip', () => 'ของที่ได้เก็บเข้ากระเป๋าเวทมนตร์แล้ว — ' + _tuTouch('กด Tab หรือ I', 'แตะปุ่มถุงมุมขวาบน') + ' เพื่อเปิดดู']],
+    ok: () => BAG.open, min: 4, max: 16 },
+];
+TUT.mouseNear = (r) => {
+  const B = PLAYER.camBody(), hp = HOUSE.insideAt(B.x, B.y + 0.3, B.z);
+  return BODY.list.some((e) => e.kindId === 'mouse' && e.state !== 'gone' && !e.hid && Math.hypot(e.x - B.x, e.z - B.z) < r && Math.abs(e.y - B.y) < 3 && HOUSE.insideAt(e.x, e.y + 0.3, e.z) === hp);
+};
+
+TUT.CSS = `
+#tu{position:fixed;left:50%;bottom:calc(64px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);width:max-content;max-width:min(560px,92vw);box-sizing:border-box;padding:9px 16px;border-radius:12px;background:rgba(10,14,26,.74);border:2px solid rgba(255,225,150,.75);color:#fff;font:600 15px/1.5 system-ui,"Leelawadee UI",Tahoma,sans-serif;text-align:center;text-shadow:0 1px 2px rgba(0,0,0,.55);pointer-events:none;z-index:4;opacity:0;transition:opacity .45s;display:none}
+#tu.on{opacity:1}
+#tu p{margin:2px 0}
+#tu p.th{font-weight:500;font-style:italic;color:#d9e6ff}
+#tu p.th b{font-style:normal;font-size:12px;color:#9cc0ff;margin-right:6px}
+.touch #tu{bottom:calc(198px + env(safe-area-inset-bottom,0px))}
+@media (min-width:760px){.touch #tu{bottom:calc(22px + env(safe-area-inset-bottom,0px));max-width:min(520px,calc(100vw - 400px))}}
+`;
+TUT.init = () => {
+  const sv = SAVE.read().taught; if (sv && typeof sv === 'object') TUT.taught = sv;
+  if (STORY.legacy) TUT.taught.walk = 1;   // เซฟเก่าที่เล่นมาแล้ว ไม่ต้องสอนเดินซ้ำ
+  const st = document.createElement('style'); st.textContent = TUT.CSS; document.head.appendChild(st);
+  const el = TUT.el = document.createElement('div'); el.id = 'tu'; UI.root.appendChild(el);
+};
+TUT.show = (d) => {
+  TUT.cur = d; TUT.t = 0; TUT.mark(d.id);
+  TUT.el.innerHTML = d.lines.map(([k, t]) => '<p class="' + (k === 'thought' ? 'th' : 'tp') + '">' + (k === 'thought' ? '<b>ฟินน์คิดในใจ</b>' : '') + (typeof t === 'function' ? t() : t) + '</p>').join('');
+  TUT.el.style.display = 'block'; void TUT.el.offsetWidth; TUT.el.classList.add('on');
+};
+TUT.hide = () => { TUT.cur = null; TUT.el.classList.remove('on'); const el = TUT.el; setTimeout(() => { if (!TUT.cur) el.style.display = 'none'; }, 500); };
+TUT.update = (dt) => {
+  const P = PLAYER, B = P.camBody(), busy = TALK.on || WIZ.lock || !!P.rs;
+  if (TUT.inHut()) TUT.wasHut = true;
+  if (!P.ctl && P.form === 'human' && INPUT.down && Math.hypot(P.vx, P.vz) > 4) TUT.ran = true;
+  TUT.el.style.visibility = busy ? 'hidden' : '';
+  if (busy) return;
+  const d = TUT.cur;
+  if (d) {
+    TUT.t += dt;
+    if ((TUT.t >= (d.min || 2) && d.ok()) || TUT.t >= (d.max || 14)) TUT.hide();
+    return;
+  }
+  for (const q of TUT.list) if (!TUT.taught[q.id] && q.when()) { TUT.show(q); return; }
 };
 
 /* ---- 72-ui.js ---- */
@@ -4741,7 +5117,7 @@ UI.init = () => {
   root.innerHTML = '<div id="eh"><span>' + UI.SVG_WING + '</span><div id="eb"><i id="ef"></i></div></div>' +
     '<div id="jz"></div><div id="jb"><div id="jk"></div></div>' +
     '<div class="ub" id="bu">' + UI.SVG_UP + '</div><div class="ub" id="bd">' + UI.SVG_DOWN + '</div><div id="ux"></div>' +
-    '<div id="hint">WASD เดิน · Space กระโดด/บินขึ้น · Shift วิ่ง/ลงต่ำ · R แปลงร่าง · E บังคับจิต · Q ปล่อย · F ใช้/หยิบ · Tab กระเป๋า · ล้อเมาส์ = ซูม</div><div id="tg"></div><div id="us"></div><div id="bn"></div><div id="ts"></div><div id="fd"></div>';
+    '<div id="hint">WASD เดิน · Space กระโดด · F ใช้/คุย · ล้อเมาส์ = ซูม</div><div id="tg"></div><div id="us"></div><div id="bn"></div><div id="ts"></div><div id="fd"></div>';
   document.body.appendChild(root);
   const g = (id) => root.querySelector('#' + id), E = UI.els;
   E.eh = g('eh'); E.ef = g('ef'); E.jz = g('jz'); E.jb = g('jb'); E.jk = g('jk'); E.bu = g('bu'); E.bd = g('bd'); E.ux = g('ux'); E.hint = g('hint'); E.fd = g('fd'); E.tg = g('tg'); E.us = g('us'); E.bn = g('bn'); E.ts = g('ts');
@@ -5058,7 +5434,7 @@ function initScene() {
   PLAYER.init();
   BODY.build(R.scene); GLOW.init(R.scene, BODY.list.length + 240);   // ร่างในโลก + จุดเรืองแสง/แสงพุ่ง/ควันแปลงร่าง (ต้องสร้างหลัง PROPS: ใช้ COLL)
   UI.init(); MIND.init();
-  SENSE.build(); SENSE.buildFx(R.scene); BAG.build(R.scene); WIZ.init(); GOALS.init();   // ระบบมองเห็น/ได้ยิน · กระเป๋า+ของในโลก · ฉากพ่อมด (ต้องหลัง BODY/TOWN/UI)
+  SENSE.build(); SENSE.buildFx(R.scene); BAG.build(R.scene); WIZ.init(); GOALS.init(); STORY.init(); TALK.init(); TUT.init();   // ระบบมองเห็น/ได้ยิน · กระเป๋า+ของในโลก · ฉากพ่อมด (ต้องหลัง BODY/TOWN/UI)
   if (HASH.debugcam) {
     CAM.setRange({ min: 36, max: 620 }); CAM.user = 105;
     const s = WORLD.byId[HASH.island]; CAM.panTo(s.x, s.z, true); CAM.setZoom(HASH.zoom || 105, true);
@@ -5088,8 +5464,11 @@ function frame(now) {
   SENSE.update(dt);
   BODY.update(dt);
   BAG.update();
+  TALK.update(dt);
   INTERACT.update(dt);
   BAKERY.update(dt);
+  STORY.update(dt);
+  TUT.update(dt);
   GOALS.update(dt);
   HOUSE.update(dt, PLAYER.camBody());
   TOWER.update(dt);
@@ -5228,12 +5607,24 @@ DBG.bakeryPut = (lx, lz, yaw, hold) => { const h = BAKERY.h, r = DBG.putBody(BAK
 DBG.bakeryRelease = () => { BAKERY.e.ai.t = 0.1; return true; };
 DBG.faceTo = (lx, lz, tx, tz) => +Math.atan2(tx - lx, tz - lz).toFixed(3);   // yaw ที่หันจาก (lx,lz) ไป (tx,tz)
 DBG.bakeryAt = (lx, lz, y) => { const h = BAKERY.h; return [h.x + lx, (y === undefined ? h.base + HOUSE.FY : h.base + y), h.z + lz]; };   // พิกัดโลกจากพิกัดเทียบกลางร้าน
-Object.defineProperty(DBG, 'goals', { enumerable: true, get: () => ({ done: GOALS.done.slice(), cur: GOALS.cur(), text: GOALS.list[GOALS.cur()].text, shown: GOALS.el.style.display !== 'none', collapsed: GOALS.el.classList.contains('c'), saved: SAVE.read().goals || null, rect: (() => { const r = GOALS.el.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top), Math.round(r.right), Math.round(r.bottom)]; })() }) });
+Object.defineProperty(DBG, 'goals', { enumerable: true, get: () => ({ done: GOALS.done.slice(), cur: GOALS.cur(), text: GOALS.list[GOALS.cur()].text, shown: GOALS.el.style.display !== 'none', collapsed: GOALS.el.classList.contains('c'), saved: SAVE.read().goals2 || null, rect: (() => { const r = GOALS.el.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top), Math.round(r.right), Math.round(r.bottom)]; })() }) });
 DBG.possess = (id) => { const e = BODY.byId[id]; if (!e) return null; if (PLAYER.ctl) MIND.release('user'); PLAYER.state = 'ground'; MIND.begin(e, true); return PLAYER.ctl ? PLAYER.ctl.id : null; };   // (ตรวจ) บังคับจิตตัวนี้ทันที ข้ามระยะ/สาย
 DBG.mouseId = (i) => (BODY.list.filter((e) => e.kindId === 'mouse')[i || 0] || {}).id || null;
 DBG.uiLabels = () => ({ tg: UI.els.tg.style.display, tgText: UI.els.tg.textContent, us: UI.els.us.style.display, toast: UI.els.ts.classList.contains('on') ? UI.els.ts.textContent : '', glowPts: GLOW.n, target: MIND.target ? MIND.target.id : null });
 DBG.glowOf = (id) => { const e = BODY.byId[id]; if (!e) return null; const out = []; for (let i = 0; i < GLOW.n; i++) if (Math.hypot(GLOW.pos[i * 3] - e.x, GLOW.pos[i * 3 + 2] - e.z) < 0.01 && GLOW.knd[i] < 2) out.push(+GLOW.pos[i * 3 + 1].toFixed(2)); return out; };   // จุดเรืองแสงของตัวนี้ที่ถูกวาดอยู่ตอนนี้ (ความสูง y) · ว่าง = ไม่วาด
 DBG.elRect = (sel) => { const e = document.querySelector(sel); if (!e) return null; const r = e.getBoundingClientRect(); return { cx: Math.round((r.left + r.right) / 2), cy: Math.round((r.top + r.bottom) / 2), l: Math.round(r.left), t: Math.round(r.top), r: Math.round(r.right), b: Math.round(r.bottom), shown: getComputedStyle(e).display !== 'none' }; };
+// เรื่องฟินน์ (M5.6 งานย่อย 1): สถานะเรื่อง · บทพูด · บทสอน · คนทำขนมปัง · บ้านฟินน์
+Object.defineProperty(DBG, 'story', { enumerable: true, get: () => { const b = STORY.baker(), m = STORY.mother(), sv = SAVE.read();
+  return { s: Object.assign({}, STORY.s), saved: sv.story || null, legacy: STORY.legacy, taught: Object.assign({}, TUT.taught), tut: TUT.cur ? TUT.cur.id : null, tutText: TUT.cur ? TUT.el.textContent : '', tutShown: !!TUT.cur && getComputedStyle(TUT.el).visibility !== 'hidden',
+    talk: TALK.on ? { id: TALK.id, i: TALK.i, n: TALK.lines.length, who: TALK.lines[TALK.i][0], line: TALK.text(TALK.lines[TALK.i]), typed: Math.floor(TALK.chars) } : null,
+    baker: b ? { away: !!b.away, state: b.state, x: _f2(b.x), z: _f2(b.z) } : null, mother: m ? { x: _f2(m.x), y: _f2(m.y), z: _f2(m.z), state: m.state } : null, hutIn: TUT.inHut(), food: STORY.food(), hour: _f2(TIME.hour) }; } });
+DBG.talkStart = (k) => TALK.start(k || 'mother');
+DBG.talkAdvance = () => { TALK.advance(); return TALK.on; };
+DBG.talkSkip = () => { TALK.end(true); return TALK.on; };
+DBG.hutPut = (lx, lz, yaw) => { const h = HUT.h; return DBG.setPlayer(h.x + lx, h.base + HOUSE.FY, h.z + lz) && (yaw !== undefined ? (PLAYER.yaw = yaw) : PLAYER.yaw); };   // วางตัวเราในบ้านฟินน์ (พิกัดเทียบกลางห้อง)
+DBG.resetStory = () => { for (const k of ['story', 'taught', 'goals2', 'seen', 'bag', 'used', 'bakery']) SAVE.write({ [k]: undefined }); return SAVE.read(); };
+DBG.tutMark = (...ids) => { ids.forEach((i) => TUT.mark(i)); if (TUT.cur) TUT.hide(); return TUT.taught; };   // (ตรวจ) ถือว่าสอนเรื่องนั้นแล้ว
+DBG.starter = () => { if (TALK.on) TALK.end(true); STORY.set('opened'); return STORY.s; };   // (ตรวจ) ข้ามบทพูดเปิดเกม
 
 })();</script>
 </body>
